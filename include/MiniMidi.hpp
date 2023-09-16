@@ -5,6 +5,7 @@
 #include<cstdlib>
 #include<iostream>
 #include<string>
+#include<cstring>
 
 
 namespace minimidi {
@@ -489,13 +490,15 @@ private:
 
 public:
     MidiFile(const container::Bytes& data) {
+        if(data.size() < 4) {
+            std::cerr << "Invaild MIDI file." << std::endl;
+            exit(EXIT_FAILURE);
+        }
+
         uint8_t* cursor = const_cast<uint8_t*>(data.data());
         uint8_t* bufferEnd = cursor + data.size();
 
-        if(!(*(cursor) == 'M' &&
-            *(cursor + 1) == 'T' &&
-            *(cursor + 2) == 'h' &&
-            *(cursor + 3) == 'd' &&
+        if(!(!strncmp(reinterpret_cast<const char*>(cursor), "MThd", 4) &&
             utils::read_msb_bytes(cursor + 4, 4) == 6
             )) {
             std::cerr << "MThd excepted!" << std::endl;
@@ -512,11 +515,7 @@ public:
         for (int i = 0; i < trackNum; ++i)
         {
             // Skip unknown chunk
-            while(!(*(cursor) == 'M' &&
-                *(cursor + 1) == 'T' &&
-                *(cursor + 2) == 'r' &&
-                *(cursor + 3) == 'k'
-                )) {
+            while(!strncmp(reinterpret_cast<const char*>(cursor), "MThd", 4)) {
                 size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
                 cursor += (8 + chunkLen);
                 continue;
@@ -535,6 +534,11 @@ public:
 
     static MidiFile from_file(const std::string& filepath) {
         FILE* filePtr = fopen(filepath.c_str(), "r");
+
+        if(!filePtr) {
+            std::cout << "Reading file failed!" << std::endl;
+            exit(EXIT_FAILURE);
+        }
 
         fseek(filePtr, 0, SEEK_END);
         size_t fileLen = ftell(filePtr);
