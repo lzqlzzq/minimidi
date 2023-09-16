@@ -45,7 +45,7 @@ inline uint64_t read_msb_bytes(uint8_t* buffer, size_t length) {
 
 void print_bytes(const container::Bytes& data) {
     for(auto &d: data) {
-        std::cout << (int)d << " ";
+        std::cout << (int)d << ", ";
     }
     std::cout << std::endl;
 };
@@ -280,24 +280,24 @@ public:
 };
 
 std::ostream& operator<<(std::ostream& out, const Message& message) {
-    out << "time " << message.get_time() << " | [";
+    out << "time=" << message.get_time() << " | [";
     out << message.get_type_string() << "] ";
     
     switch(message.get_type()) {
         case(message::MessageType::NoteOn): {
-            out << "channel " << (int)message.get_channel() << " pitch " << (int)message.get_pitch() << " velocity " << (int)message.get_velocity();
+            out << "channel=" << (int)message.get_channel() << " pitch=" << (int)message.get_pitch() << " velocity=" << (int)message.get_velocity();
             break;
         };
         case(message::MessageType::NoteOff): {
-            out << "channel " << (int)message.get_channel() << " pitch " << (int)message.get_pitch() << " velocity " << (int)message.get_velocity();
+            out << "channel=" << (int)message.get_channel() << " pitch=" << (int)message.get_pitch() << " velocity=" << (int)message.get_velocity();
             break;
         };
         case(message::MessageType::ProgramChange): {
-            out << "channel " << (int)message.get_channel() << " program " << (int)message.get_program();
+            out << "channel=" << (int)message.get_channel() << " program=" << (int)message.get_program();
             break;
         };
         case(message::MessageType::ControlChange): {
-            out << "channel " << (int)message.get_channel() << " control number " << (int)message.get_control_number() << " control value " << (int)message.get_control_value();
+            out << "channel=" << (int)message.get_channel() << " control number=" << (int)message.get_control_number() << " control value=" << (int)message.get_control_value();
             break;
         };
         case(message::MessageType::Meta): {
@@ -331,7 +331,7 @@ std::ostream& operator<<(std::ostream& out, const Message& message) {
                 }
                 default: {
                     container::Bytes data = message.get_meta_value();
-                    out << (int)message.get_meta_type() << " value ";
+                    out << (int)message.get_meta_type() << " value=";
                     utils::print_bytes(message.get_data());
                     break;
                 }
@@ -339,7 +339,7 @@ std::ostream& operator<<(std::ostream& out, const Message& message) {
             break;
         };
         default: {
-            out << "Status code: " << (int)message::message_attr(message.get_type()).status << " length " << message.get_data().size();
+            out << "Status code: " << (int)message::message_attr(message.get_type()).status << " length=" << message.get_data().size();
             break;
         };
     }
@@ -409,8 +409,11 @@ public:
             }
 
             if(cursor > bufferEnd) {
+                /*
                 std::cerr << "Unexpected EOF in track." << std::endl;
                 exit(EXIT_FAILURE);
+                */
+                throw "Unexpected EOF in track.";
             }
 
             this->messages.emplace_back(message::Message(tickOffset, messageData));
@@ -474,8 +477,12 @@ inline MidiFormat read_midiformat(uint16_t data) {
         #undef MIDI_FORMAT_MEMBER
     }
 
+    /*
     std::cerr << "Invaild midi format!" << std::endl;
     exit(EXIT_FAILURE);
+    */
+
+    throw "Invaild midi format!";
 };
 
 class MidiFile {
@@ -491,8 +498,12 @@ private:
 public:
     MidiFile(const container::Bytes& data) {
         if(data.size() < 4) {
+            /*
             std::cerr << "Invaild MIDI file." << std::endl;
             exit(EXIT_FAILURE);
+            */
+
+            throw "Invaild midi format!";
         }
 
         uint8_t* cursor = const_cast<uint8_t*>(data.data());
@@ -501,8 +512,12 @@ public:
         if(!(!strncmp(reinterpret_cast<const char*>(cursor), "MThd", 4) &&
             utils::read_msb_bytes(cursor + 4, 4) == 6
             )) {
+            /*
             std::cerr << "MThd excepted!" << std::endl;
             exit(EXIT_FAILURE);
+            */
+
+            throw "Invaild midi format!";
         }
 
         this->format = read_midiformat(utils::read_msb_bytes(cursor + 8, 2));
@@ -527,7 +542,11 @@ public:
             cursor += (8 + chunkLen);
 
             if(cursor > bufferEnd) {
+                /*
                 std::cerr << "Unexpected EOF in file." << std::endl;
+                */
+
+                throw "Invaild midi format!";
             }
         }
     }
@@ -536,8 +555,11 @@ public:
         FILE* filePtr = fopen(filepath.c_str(), "r");
 
         if(!filePtr) {
-            std::cout << "Reading file failed!" << std::endl;
+            /*
+            std::cerr << "Reading file failed!" << std::endl;
             exit(EXIT_FAILURE);
+            */
+            throw "Invaild midi format!";
         }
 
         fseek(filePtr, 0, SEEK_END);
@@ -599,7 +621,7 @@ std::ostream& operator<<(std::ostream& out, MidiFile& file) {
 
     out << std::endl;
 
-    for (int i = 0; i < file.track_num(); ++i)
+    for(int i = 0; i < file.track_num(); ++i)
     {
         out << "Track " << i << ": " << std::endl;
         out << file.track(i) << std::endl;
