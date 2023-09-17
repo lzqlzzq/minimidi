@@ -503,7 +503,7 @@ public:
             exit(EXIT_FAILURE);
             */
 
-            throw "Invaild midi format!";
+            throw "Invaild midi file!";
         }
 
         uint8_t* cursor = const_cast<uint8_t*>(data.data());
@@ -517,7 +517,7 @@ public:
             exit(EXIT_FAILURE);
             */
 
-            throw "Invaild midi format!";
+            throw "MThd excepted!";
         }
 
         this->format = read_midiformat(utils::read_msb_bytes(cursor + 8, 2));
@@ -546,7 +546,7 @@ public:
                 std::cerr << "Unexpected EOF in file." << std::endl;
                 */
 
-                throw "Invaild midi format!";
+                throw "Unexpected EOF in file!";
             }
         }
     }
@@ -559,7 +559,8 @@ public:
             std::cerr << "Reading file failed!" << std::endl;
             exit(EXIT_FAILURE);
             */
-            throw "Invaild midi format!";
+            fclose(filePtr);
+            throw "Reading file failed!";
         }
 
         fseek(filePtr, 0, SEEK_END);
@@ -568,6 +569,7 @@ public:
         container::Bytes data = container::Bytes(fileLen);
         fseek(filePtr, 0, SEEK_SET);
         fread(data.data(), 1, fileLen, filePtr);
+        fclose(filePtr);
 
         return MidiFile(data);
     };
