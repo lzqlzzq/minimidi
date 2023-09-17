@@ -416,7 +416,12 @@ public:
                 throw "Unexpected EOF in track.";
             }
 
-            this->messages.emplace_back(message::Message(tickOffset, messageData));
+            message::Message msg = message::Message(tickOffset, messageData);
+            this->messages.push_back(msg);
+
+            if(msg.get_type() == message::MessageType::Meta &&
+                msg.get_meta_type() == message::MetaType::EndOfTrack)
+                break;
         }
     };
 
@@ -559,7 +564,6 @@ public:
             std::cerr << "Reading file failed!" << std::endl;
             exit(EXIT_FAILURE);
             */
-            fclose(filePtr);
             throw "Reading file failed!";
         }
 
