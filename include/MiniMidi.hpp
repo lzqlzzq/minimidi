@@ -5,6 +5,7 @@
 #include<cstdlib>
 #include<iostream>
 #include<string>
+#include<iomanip>
 #include<cstring>
 
 
@@ -44,10 +45,11 @@ inline uint64_t read_msb_bytes(uint8_t* buffer, size_t length) {
 };
 
 void print_bytes(const container::Bytes& data) {
+    std::cout << std::hex << std::setfill('0') << "{ ";
     for(auto &d: data) {
-        std::cout << (int)d << ", ";
+        std::cout << "0x" << std::setw(2) << (int)d << " ";
     }
-    std::cout << std::endl;
+    std::cout << "}" << std::dec << std::endl;
 };
 
 }
@@ -375,6 +377,9 @@ public:
             if((*cursor) < 0x80) {
                 messageData = container::Bytes(prevEventLen);
 
+                if(!prevEventLen)
+                    throw "Corrupted MIDI File.";
+
                 messageData[0] = prevStatusCode;
                 std::copy(cursor, cursor + prevEventLen - 1, messageData.begin() + 1);
                 cursor += prevEventLen - 1;
@@ -386,6 +391,9 @@ public:
                 cursor += 2;
                 prevEventLen = utils::read_variable_length(&cursor) + (cursor - prevBuffer);
 
+                if(prevBuffer + prevEventLen > bufferEnd)
+                    throw "Unexpected EOF of Meta Event!";
+
                 messageData = std::vector(prevBuffer, prevBuffer + prevEventLen);
                 cursor += prevEventLen - (cursor - prevBuffer);
             }
@@ -395,6 +403,9 @@ public:
                 uint8_t* prevBuffer = cursor;
                 cursor += 1;
                 prevEventLen = utils::read_variable_length(&cursor) + (cursor - prevBuffer);
+
+                if(prevBuffer + prevEventLen > bufferEnd)
+                    throw "Unexpected EOF of SysEx Event!";
 
                 messageData = std::vector(prevBuffer, prevBuffer + prevEventLen);
                 cursor += prevEventLen - (cursor - prevBuffer);
@@ -420,8 +431,9 @@ public:
             this->messages.push_back(msg);
 
             if(msg.get_type() == message::MessageType::Meta &&
-                msg.get_meta_type() == message::MetaType::EndOfTrack)
-                break;
+                msg.get_meta_type() == message::MetaType::EndOfTrack) {
+                    break;
+            }
         }
     };
 
@@ -502,28 +514,16 @@ private:
 
 public:
     MidiFile(const container::Bytes& data) {
-        if(data.size() < 4) {
-            /*
-            std::cerr << "Invaild MIDI file." << std::endl;
-            exit(EXIT_FAILURE);
-            */
-
+        if(data.size() < 4)
             throw "Invaild midi file!";
-        }
 
         uint8_t* cursor = const_cast<uint8_t*>(data.data());
         uint8_t* bufferEnd = cursor + data.size();
 
         if(!(!strncmp(reinterpret_cast<const char*>(cursor), "MThd", 4) &&
             utils::read_msb_bytes(cursor + 4, 4) == 6
-            )) {
-            /*
-            std::cerr << "MThd excepted!" << std::endl;
-            exit(EXIT_FAILURE);
-            */
-
+            ))
             throw "MThd excepted!";
-        }
 
         this->format = read_midiformat(utils::read_msb_bytes(cursor + 8, 2));
         uint16_t trackNum = utils::read_msb_bytes(cursor + 10, 2);
@@ -531,6 +531,10 @@ public:
         this->ticksPerQuarter = (((*(cursor + 12)) & 0x7F) << 8) + (*(cursor + 13));
 
         cursor += 14;
+        /*
+        std::cout << "Track num: " << trackNum << std::endl;
+        std::cout << "Size: " << size_t(data.size()) << std::endl;
+        */
 
         for (int i = 0; i < trackNum; ++i)
         {
@@ -542,17 +546,16 @@ public:
             }
 
             size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
-            this->tracks.emplace_back(track::Track(container::Bytes(cursor + 8, cursor + 8 + chunkLen)));
+            /*
+            std::cout << "Cursor: " << size_t(cursor - data.data()) << std::endl;
+            std::cout << "Chunk len: " << chunkLen << std::endl;
+            */
 
-            cursor += (8 + chunkLen);
-
-            if(cursor > bufferEnd) {
-                /*
-                std::cerr << "Unexpected EOF in file." << std::endl;
-                */
-
+            if(cursor + chunkLen + 8 > bufferEnd)
                 throw "Unexpected EOF in file!";
-            }
+
+            this->tracks.emplace_back(track::Track(container::Bytes(cursor + 8, cursor + 8 + chunkLen)));
+            cursor += (8 + chunkLen);
         }
     }
 

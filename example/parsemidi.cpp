@@ -17,7 +17,7 @@ int main(int argc, char *argv[]) {
         std::cout << "Filename: " << filename << std::endl;
         try {
             minimidi::file::MidiFile midifile = minimidi::file::MidiFile::from_file(filename);
-            std::cout << midifile;
+            std::cout << midifile.track_num();
         } catch(const char* e) {
             std::cout << e << std::endl;
             exit(EXIT_FAILURE);
