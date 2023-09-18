@@ -420,10 +420,6 @@ public:
             }
 
             if(cursor > bufferEnd) {
-                /*
-                std::cerr << "Unexpected EOF in track." << std::endl;
-                exit(EXIT_FAILURE);
-                */
                 throw "Unexpected EOF in track.";
             }
 
@@ -494,11 +490,6 @@ inline MidiFormat read_midiformat(uint16_t data) {
         #undef MIDI_FORMAT_MEMBER
     }
 
-    /*
-    std::cerr << "Invaild midi format!" << std::endl;
-    exit(EXIT_FAILURE);
-    */
-
     throw "Invaild midi format!";
 };
 
@@ -531,10 +522,6 @@ public:
         this->ticksPerQuarter = (((*(cursor + 12)) & 0x7F) << 8) + (*(cursor + 13));
 
         cursor += 14;
-        /*
-        std::cout << "Track num: " << trackNum << std::endl;
-        std::cout << "Size: " << size_t(data.size()) << std::endl;
-        */
 
         for (int i = 0; i < trackNum; ++i)
         {
@@ -546,10 +533,6 @@ public:
             }
 
             size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
-            /*
-            std::cout << "Cursor: " << size_t(cursor - data.data()) << std::endl;
-            std::cout << "Chunk len: " << chunkLen << std::endl;
-            */
 
             if(cursor + chunkLen + 8 > bufferEnd)
                 throw "Unexpected EOF in file!";
@@ -562,13 +545,8 @@ public:
     static MidiFile from_file(const std::string& filepath) {
         FILE* filePtr = fopen(filepath.c_str(), "r");
 
-        if(!filePtr) {
-            /*
-            std::cerr << "Reading file failed!" << std::endl;
-            exit(EXIT_FAILURE);
-            */
+        if(!filePtr)
             throw "Reading file failed!";
-        }
 
         fseek(filePtr, 0, SEEK_END);
         size_t fileLen = ftell(filePtr);
