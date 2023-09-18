@@ -403,12 +403,15 @@ public:
                 uint8_t* prevBuffer = cursor;
                 cursor += 1;
                 prevEventLen = utils::read_variable_length(&cursor) + (cursor - prevBuffer);
-
+                
                 if(prevBuffer + prevEventLen > bufferEnd)
                     throw "Unexpected EOF of SysEx Event!";
 
-                messageData = std::vector(prevBuffer, prevBuffer + prevEventLen);
+                // messageData = std::vector(prevBuffer, prevBuffer + prevEventLen);
                 cursor += prevEventLen - (cursor - prevBuffer);
+
+                // Skip SysEx message.
+                continue;
             }
             // Channel message or system common message
             else {
