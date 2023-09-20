@@ -44,6 +44,7 @@ inline uint64_t read_msb_bytes(uint8_t* buffer, size_t length) {
     return res;
 };
 
+/*
 void print_bytes(const container::Bytes& data) {
     std::cout << std::hex << std::setfill('0') << "{ ";
     for(auto &d: data) {
@@ -51,6 +52,7 @@ void print_bytes(const container::Bytes& data) {
     }
     std::cout << "}" << std::dec << std::endl;
 };
+*/
 
 }
 
@@ -209,6 +211,7 @@ private:
     MessageType msgType;
 
 public:
+    Message() = default;
     Message(uint32_t time, const container::Bytes& data) {
         this->time = time;
         this->data = data;
@@ -281,6 +284,16 @@ public:
 
 };
 
+std::ostream& operator<<(std::ostream& out, const container::Bytes& data) {
+    out << std::hex << std::setfill('0') << "{ ";
+    for(auto &d: data) {
+        out << "0x" << std::setw(2) << (int)d << " ";
+    }
+    out << "}" << std::dec << std::endl;
+
+    return out;
+};
+
 std::ostream& operator<<(std::ostream& out, const Message& message) {
     out << "time=" << message.get_time() << " | [";
     out << message.get_type_string() << "] ";
@@ -333,8 +346,8 @@ std::ostream& operator<<(std::ostream& out, const Message& message) {
                 }
                 default: {
                     container::Bytes data = message.get_meta_value();
-                    out << (int)message.get_meta_type() << " value=";
-                    utils::print_bytes(message.get_data());
+                    out << (int)message.get_meta_type() << " value=" << message.get_data();
+                    // utils::print_bytes(message.get_data());
                     break;
                 }
             }
@@ -361,6 +374,7 @@ private:
     message::Messages messages;
 
 public:
+    Track() = default;
     Track(const container::Bytes& data) {
         uint8_t* cursor = const_cast<uint8_t*>(data.data());
         uint8_t* bufferEnd = cursor + data.size();
@@ -403,15 +417,12 @@ public:
                 uint8_t* prevBuffer = cursor;
                 cursor += 1;
                 prevEventLen = utils::read_variable_length(&cursor) + (cursor - prevBuffer);
-                
+
                 if(prevBuffer + prevEventLen > bufferEnd)
                     throw "Unexpected EOF of SysEx Event!";
 
-                // messageData = std::vector(prevBuffer, prevBuffer + prevEventLen);
+                messageData = std::vector(prevBuffer, prevBuffer + prevEventLen);
                 cursor += prevEventLen - (cursor - prevBuffer);
-
-                // Skip SysEx message.
-                continue;
             }
             // Channel message or system common message
             else {
@@ -507,6 +518,7 @@ private:
     track::Tracks tracks;
 
 public:
+    MidiFile() = default;
     MidiFile(const container::Bytes& data) {
         if(data.size() < 4)
             throw "Invaild midi file!";
