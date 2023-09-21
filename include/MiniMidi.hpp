@@ -558,7 +558,7 @@ public:
     }
 
     static MidiFile from_file(const std::string& filepath) {
-        FILE* filePtr = fopen(filepath.c_str(), "r");
+        FILE* filePtr = fopen(filepath.c_str(), "rb");
 
         if(!filePtr)
             throw "Reading file failed!";
