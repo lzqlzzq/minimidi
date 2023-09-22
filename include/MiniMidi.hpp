@@ -44,14 +44,6 @@ inline uint64_t read_msb_bytes(uint8_t* buffer, size_t length) {
     return res;
 };
 
-inline bool ensure_range(uint8_t* cursor, size_t length) {
-    for(auto i = 0; i < length; i++) {
-        if(*cursor & 0x80)
-            return false;
-    }
-    return true;
-};
-
 }
 
 
@@ -212,19 +204,6 @@ public:
     Message(uint32_t time, const container::Bytes& data) {
         this->time = time;
         this->msgType = status_to_message_type(data[0]);
-        
-        if(((this->msgType == MessageType::NoteOff ||
-            this->msgType == MessageType::NoteOn ||
-            this->msgType == MessageType::PolyphonicAfterTouch ||
-            this->msgType == MessageType::ControlChange ||
-            this->msgType == MessageType::PitchBend) &&
-            !utils::ensure_range(const_cast<uint8_t*>(&data[1]), 2)) ||
-            ((this->msgType == MessageType::ProgramChange ||
-            this->msgType == MessageType::ChannelAfterTouch ||
-            this->msgType == MessageType::SongSelect) &&
-            !utils::ensure_range(const_cast<uint8_t*>(&data[1]), 1)))
-            throw "Data range must between 0 and 127!";
-
         this->data = data;
     };
 
@@ -249,22 +228,32 @@ public:
     };
 
     inline uint8_t get_pitch() const {
+        if(this->data[1] & 0x80)
+            throw "Pitch must between 0 and 127!";
         return this->data[1];
     };
 
     inline uint8_t get_velocity() const {
+        if(this->data[2] & 0x80)
+            throw "Velocity must between 0 and 127!";
         return this->data[2];
     };
 
     inline uint8_t get_control_number() const {
+        if(this->data[1] & 0x80)
+            throw "Control number must between 0 and 127!";
         return this->data[1];
     };
 
     inline uint8_t get_control_value() const {
+        if(this->data[2] & 0x80)
+            throw "Control value must between 0 and 127!";
         return this->data[2];
     };
 
     inline uint8_t get_program() const {
+        if(this->data[1] & 0x80)
+            throw "Program must between 0 and 127!";
         return this->data[1];
     };
 
