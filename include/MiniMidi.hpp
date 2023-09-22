@@ -212,7 +212,8 @@ public:
     Message(uint32_t time, const container::Bytes& data) {
         this->time = time;
         this->msgType = status_to_message_type(data[0]);
-        
+
+        /*
         if(((this->msgType == MessageType::NoteOn ||
             this->msgType == MessageType::ControlChange ||
             this->msgType == MessageType::NoteOff ||
@@ -224,6 +225,7 @@ public:
             this->msgType == MessageType::SongSelect) &&
             !utils::ensure_range(const_cast<uint8_t*>(&data[1]), 1)))
             throw "Data range must between 0 and 127!";
+        */
 
         this->data = data;
     };
