@@ -44,15 +44,13 @@ inline uint64_t read_msb_bytes(uint8_t* buffer, size_t length) {
     return res;
 };
 
-/*
-void print_bytes(const container::Bytes& data) {
-    std::cout << std::hex << std::setfill('0') << "{ ";
-    for(auto &d: data) {
-        std::cout << "0x" << std::setw(2) << (int)d << " ";
+inline bool ensure_range(uint8_t* cursor, size_t length) {
+    for(auto i = 0; i < length; i++) {
+        if(*cursor & 0x80)
+            return false;
     }
-    std::cout << "}" << std::dec << std::endl;
+    return true;
 };
-*/
 
 }
 
@@ -203,7 +201,6 @@ public:
     };
 };
 
-
 class Message {
 private:
     uint32_t time;
@@ -214,8 +211,21 @@ public:
     Message() = default;
     Message(uint32_t time, const container::Bytes& data) {
         this->time = time;
-        this->data = data;
         this->msgType = status_to_message_type(data[0]);
+        
+        if(((this->msgType == MessageType::NoteOff ||
+            this->msgType == MessageType::NoteOn ||
+            this->msgType == MessageType::PolyphonicAfterTouch ||
+            this->msgType == MessageType::ControlChange ||
+            this->msgType == MessageType::PitchBend) &&
+            !utils::ensure_range(const_cast<uint8_t*>(&data[1]), 2)) ||
+            ((this->msgType == MessageType::ProgramChange ||
+            this->msgType == MessageType::ChannelAfterTouch ||
+            this->msgType == MessageType::SongSelect) &&
+            !utils::ensure_range(const_cast<uint8_t*>(&data[1]), 1)))
+            throw "Data range must between 0 and 127!";
+
+        this->data = data;
     };
 
     inline uint32_t get_time() const {
