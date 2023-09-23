@@ -20,16 +20,16 @@ typedef std::vector<uint8_t> Bytes;
 
 namespace utils {
 
-inline uint32_t read_variable_length(uint8_t** buffer) {
+inline uint32_t read_variable_length(uint8_t* &buffer) {
     uint32_t value = 0;
 
     for(auto i = 0; i < 4; i++) {
-        value = (value << 7) + (**buffer & 0x7f);
-        if(!(**buffer & 0x80)) break;
-        (*buffer)++;
+        value = (value << 7) + (*buffer & 0x7f);
+        if(!(*buffer & 0x80)) break;
+        buffer++;
     }
-    
-    (*buffer)++;
+
+    buffer++;
     return value;
 };
 
@@ -396,7 +396,7 @@ public:
         size_t prevEventLen = 0;
 
         while(cursor < bufferEnd) {
-            tickOffset += utils::read_variable_length(&cursor);
+            tickOffset += utils::read_variable_length(cursor);
             container::Bytes messageData;
 
             // Running status
@@ -415,7 +415,7 @@ public:
                 prevStatusCode = (*cursor);
                 uint8_t* prevBuffer = cursor;
                 cursor += 2;
-                prevEventLen = utils::read_variable_length(&cursor) + (cursor - prevBuffer);
+                prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
 
                 if(prevBuffer + prevEventLen > bufferEnd)
                     throw "Unexpected EOF of Meta Event!";
@@ -428,7 +428,7 @@ public:
                 prevStatusCode = (*cursor);
                 uint8_t* prevBuffer = cursor;
                 cursor += 1;
-                prevEventLen = utils::read_variable_length(&cursor) + (cursor - prevBuffer);
+                prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
 
                 if(prevBuffer + prevEventLen > bufferEnd)
                     throw "Unexpected EOF of SysEx Event!";
