@@ -4,8 +4,8 @@ Minimidi is a minimal, header-only, zero-dependent(only std), **low-level** MIDI
 # Examples
 see `example/`
 ```
-	parsemidi.cpp: parse midi to readable stdout
-	dumpmidi.cpp: dump midi to readable txt file
+	parsemidi.cpp: parse midi to readable stdout.
+	dumpmidi.cpp: dump midi to readable txt file.
 ```
 
 # Compiling
@@ -14,5 +14,6 @@ And `C++20` standard is recommanded.
 
 # TODO
 * Offer a MIDI serializing API supporting most of the message types.
-* Implement small vector optimization
-* Implement a iterator reader
+* Implement small vector optimization.
+* Implement a iterator reader.
+* Better exception handling.
