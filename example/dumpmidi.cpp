@@ -1,8 +1,8 @@
 /*
 ----------------------------- Usage ----------------------------
 ```
-    g++ midiwrite.cpp -O3 -std=c++20 -I../include -o midiwrite
-    ./midiwrite <source_midifile>.mid <target_textfile>.txt
+    g++ dumpmidi.cpp -O3 -std=c++20 -I../include -o dumpmidi
+    ./dumpmidi <source_midifile>.mid <target_textfile>.txt
 ```
 */
 
