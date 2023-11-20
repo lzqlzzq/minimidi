@@ -1,7 +1,7 @@
 /*
 ----------------------------- Usage ----------------------------
 ```
-    g++ parsemidi.cpp -I../include -O3 -o parsemidi
+    g++ parsemidi.cpp -std=c++20 -I../include -O3 -o parsemidi
     ./parsemidi <midi_file_name>
 ```
 */
