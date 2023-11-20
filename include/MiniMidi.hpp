@@ -10,6 +10,7 @@
 #include<string>
 #include<iomanip>
 #include<cstring>
+#include<span>
 
 
 namespace minimidi {
@@ -17,9 +18,9 @@ namespace minimidi {
 namespace container {
 
 typedef std::vector<uint8_t> Bytes;
+typedef std::span<const uint8_t> ByteSpan;
 
 }
-
 
 namespace utils {
 
@@ -36,23 +37,15 @@ inline uint32_t read_variable_length(uint8_t* &buffer) {
     return value;
 };
 
-inline uint64_t read_msb_bytes(uint8_t* buffer, size_t length) {
+inline uint64_t read_msb_bytes(container::ByteSpan buffer) {
     uint64_t res = 0;
 
-    for(auto i = 0; i < length; i++) {
+    for(auto i = 0; i < buffer.size(); i++) {
         res <<= 8;
-        res += (*(buffer + i));
+        res += buffer[i];
     }
 
     return res;
-};
-
-inline bool ensure_range(uint8_t* cursor, size_t length) {
-    for(auto i = 0; i < length; i++) {
-        if(*cursor & 0x80)
-            return false;
-    }
-    return true;
 };
 
 }
@@ -212,25 +205,11 @@ private:
 
 public:
     Message() = default;
-    Message(uint32_t time, const container::Bytes& data) {
+    Message(uint32_t time, const container::ByteSpan& data) {
         this->time = time;
         this->msgType = status_to_message_type(data[0]);
 
-        /*
-        if(((this->msgType == MessageType::NoteOn ||
-            this->msgType == MessageType::ControlChange ||
-            this->msgType == MessageType::NoteOff ||
-            this->msgType == MessageType::PolyphonicAfterTouch ||
-            this->msgType == MessageType::PitchBend) &&
-            !utils::ensure_range(const_cast<uint8_t*>(&data[1]), 2)) ||
-            ((this->msgType == MessageType::ProgramChange ||
-            this->msgType == MessageType::ChannelAfterTouch ||
-            this->msgType == MessageType::SongSelect) &&
-            !utils::ensure_range(const_cast<uint8_t*>(&data[1]), 1)))
-            throw "Data range must between 0 and 127!";
-        */
-
-        this->data = data;
+        this->data = container::Bytes(data.begin(), data.end());
     };
 
     inline uint32_t get_time() const {
@@ -286,7 +265,7 @@ public:
     };
 
     inline uint32_t get_tempo() const {
-        return utils::read_msb_bytes(const_cast<uint8_t*>(this->data.data()) + 3, 3);
+        return utils::read_msb_bytes(std::span{this->data}.subspan(3, 3));
     };
 
     inline TimeSignature get_time_signature() const {
@@ -390,7 +369,7 @@ private:
 
 public:
     Track() = default;
-    Track(const container::Bytes& data) {
+    Track(const container::ByteSpan& data) {
         uint8_t* cursor = const_cast<uint8_t*>(data.data());
         uint8_t* bufferEnd = cursor + data.size();
 
@@ -400,17 +379,18 @@ public:
 
         while(cursor < bufferEnd) {
             tickOffset += utils::read_variable_length(cursor);
-            container::Bytes messageData;
+            message::Message msg;
 
             // Running status
             if((*cursor) < 0x80) {
-                messageData = container::Bytes(prevEventLen);
+                container::Bytes messageData = container::Bytes(prevEventLen);
 
                 if(!prevEventLen)
                     throw "Corrupted MIDI File.";
 
                 messageData[0] = prevStatusCode;
                 std::copy(cursor, cursor + prevEventLen - 1, messageData.begin() + 1);
+                msg = message::Message(tickOffset, messageData);
                 cursor += prevEventLen - 1;
             }
             // Meta message
@@ -423,7 +403,7 @@ public:
                 if(prevBuffer + prevEventLen > bufferEnd)
                     throw "Unexpected EOF of Meta Event!";
 
-                messageData = std::vector(prevBuffer, prevBuffer + prevEventLen);
+                msg = message::Message(tickOffset, data.subspan(prevBuffer - data.data(), prevBuffer + prevEventLen - data.data()));
                 cursor += prevEventLen - (cursor - prevBuffer);
             }
             // SysEx message
@@ -436,7 +416,7 @@ public:
                 if(prevBuffer + prevEventLen > bufferEnd)
                     throw "Unexpected EOF of SysEx Event!";
 
-                messageData = std::vector(prevBuffer, prevBuffer + prevEventLen);
+                msg = message::Message(tickOffset, data.subspan(prevBuffer - data.data(), prevBuffer + prevEventLen - data.data()));
                 cursor += prevEventLen - (cursor - prevBuffer);
             }
             // Channel message or system common message
@@ -444,7 +424,7 @@ public:
                 prevStatusCode = (*cursor);
                 prevEventLen = message::message_attr(message::status_to_message_type(*cursor)).length;
 
-                messageData = std::vector(cursor, cursor + prevEventLen);
+                msg = message::Message(tickOffset, data.subspan(cursor - data.data(), cursor + prevEventLen - data.data()));
                 cursor += prevEventLen;
             }
 
@@ -452,7 +432,6 @@ public:
                 throw "Unexpected EOF in track.";
             }
 
-            message::Message msg = message::Message(tickOffset, messageData);
             this->messages.push_back(msg);
 
             if(msg.get_type() == message::MessageType::Meta &&
@@ -538,36 +517,36 @@ public:
         if(data.size() < 4)
             throw "Invaild midi file!";
 
-        uint8_t* cursor = const_cast<uint8_t*>(data.data());
-        uint8_t* bufferEnd = cursor + data.size();
+        size_t cursor = 0;
+        container::ByteSpan dataSpan = container::ByteSpan(data.begin(), data.end());
 
-        if(!(!strncmp(reinterpret_cast<const char*>(cursor), "MThd", 4) &&
-            utils::read_msb_bytes(cursor + 4, 4) == 6
+        if(!(!strncmp(reinterpret_cast<const char*>(dataSpan.data()), "MThd", 4) &&
+            utils::read_msb_bytes(dataSpan.subspan(4, 4)) == 6
             ))
             throw "MThd excepted!";
 
-        this->format = read_midiformat(utils::read_msb_bytes(cursor + 8, 2));
-        uint16_t trackNum = utils::read_msb_bytes(cursor + 10, 2);
-        this->divisionType = (*(cursor + 12)) & 0x80;
-        this->ticksPerQuarter = (((*(cursor + 12)) & 0x7F) << 8) + (*(cursor + 13));
+        this->format = read_midiformat(utils::read_msb_bytes(dataSpan.subspan(8, 2)));
+        uint16_t trackNum = utils::read_msb_bytes(dataSpan.subspan(10, 2));
+        this->divisionType = dataSpan[12] & 0x80;
+        this->ticksPerQuarter = ((dataSpan[12] & 0x7F) << 8) + dataSpan[13];
 
         cursor += 14;
 
         for (int i = 0; i < trackNum; ++i)
         {
             // Skip unknown chunk
-            while(!strncmp(reinterpret_cast<const char*>(cursor), "MThd", 4)) {
-                size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
+            while(!strncmp(reinterpret_cast<const char*>(dataSpan.subspan(cursor, 4).data()), "MThd", 4)) {
+                size_t chunkLen = utils::read_msb_bytes(dataSpan.subspan(cursor + 4, 4));
                 cursor += (8 + chunkLen);
                 continue;
             }
 
-            size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
+            size_t chunkLen = utils::read_msb_bytes(dataSpan.subspan(cursor + 4, 4));
 
-            if(cursor + chunkLen + 8 > bufferEnd)
+            if(cursor + chunkLen + 8 > data.size())
                 throw "Unexpected EOF in file!";
 
-            this->tracks.emplace_back(track::Track(container::Bytes(cursor + 8, cursor + 8 + chunkLen)));
+            this->tracks.emplace_back(track::Track(dataSpan.subspan(cursor + 8, chunkLen)));
             cursor += (8 + chunkLen);
         }
     }
