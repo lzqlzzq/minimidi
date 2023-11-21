@@ -688,9 +688,11 @@ public:
 class MidiFileIter : public MidiFileBase {
 protected:
     TrackIter trackIter;
+    container::Bytes data;
 public:
     MidiFileIter() = default;
     MidiFileIter(const container::ByteSpan& data) : MidiFileBase(data) {
+        this->data = container::Bytes(data.begin(), data.end());
         size_t cursor = 14;
 
         trackIter = TrackIter(data.subspan(cursor, data.size() - cursor), trackNum);
