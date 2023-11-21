@@ -24,7 +24,7 @@ typedef std::span<const uint8_t> ByteSpan;
 
 namespace utils {
 
-inline uint32_t read_variable_length(uint8_t* &buffer) {
+uint32_t read_variable_length(uint8_t* &buffer) {
     uint32_t value = 0;
 
     for(auto i = 0; i < 4; i++) {
@@ -36,6 +36,19 @@ inline uint32_t read_variable_length(uint8_t* &buffer) {
     buffer++;
     return value;
 };
+
+uint32_t read_variable_length(container::ByteSpan buffer, size_t& cursor) {
+    uint32_t value = 0;
+
+    for(auto i = 0; i < 4; i++) {
+        value = (value << 7) + (buffer[cursor] & 0x7f);
+        if(!(buffer[cursor] & 0x80)) break;
+        cursor++;
+    }
+
+    cursor++;
+    return value;
+}
 
 inline uint64_t read_msb_bytes(container::ByteSpan buffer) {
     uint64_t res = 0;
@@ -205,11 +218,18 @@ private:
 
 public:
     Message() = default;
-    Message(uint32_t time, const container::ByteSpan& data) {
+    Message(uint32_t time, const container::ByteSpan& msgData) {
         this->time = time;
-        this->msgType = status_to_message_type(data[0]);
+        this->msgType = status_to_message_type(msgData[0]);
 
-        this->data = container::Bytes(data.begin(), data.end());
+        this->data = container::Bytes(msgData.begin(), msgData.end());
+    };
+
+    Message(uint32_t time, const container::Bytes& msgData) {
+        this->time = time;
+        this->msgType = status_to_message_type(msgData[0]);
+
+        this->data = msgData;
     };
 
     inline uint32_t get_time() const {
@@ -362,7 +382,54 @@ typedef std::vector<message::Message> Messages;
 
 
 namespace track {
+/*
+class MessageIter {
+private:
+    size_t cursor;
+    container::ByteSpan data;
+    uint32_t tickOffset;
+    uint8_t prevStatusCode;
+    size_t prevEventLen;
+    bool is_eot;
 
+public:
+    MessageIter(const container::ByteSpan& data) {
+        cursor = 0;
+        this->data = data;
+        is_eot = false;
+
+        tickOffset = 0;
+        prevStatusCode = 0x00;
+        prevEventLen = 0;
+    };
+
+    MessageIter(bool is_eot) {
+        is_eot = is_eot;
+    };
+
+    MessageIter() = default;
+
+    MessageIter begin() const {
+        return *this;
+    };
+
+    MessageIter end() const {
+        return MessageIter(true);
+    };
+
+    MessageIter& operator++() {
+        ;
+    };
+
+    message::Message operator*() const {
+        ;
+    };
+
+    bool operator!=(const MessageIter& other) {
+        return this->is_eot != other.is_eot;
+    }
+}
+*/
 class Track {
 private:
     message::Messages messages;
@@ -498,7 +565,63 @@ inline MidiFormat read_midiformat(uint16_t data) {
         #undef MIDI_FORMAT_MEMBER
     }
 
-    throw "Invaild midi format!";
+    throw std::runtime_error("Invaild midi format!");
+};
+
+class TrackIter {
+private:
+    size_t cursor;
+    uint16_t tracksRemain;
+    container::ByteSpan data;
+
+    void skip_unknown_chunk() {
+        while(!strncmp(reinterpret_cast<const char*>(data.subspan(cursor, 4).data()), "MThd", 4)) {
+            size_t chunkLen = utils::read_msb_bytes(data.subspan(cursor + 4, 4));
+            cursor += (8 + chunkLen);
+            continue;
+        }
+    };
+
+public:
+    TrackIter(const container::ByteSpan data, uint16_t tracksRemain) {
+        this->data = data;
+        this->cursor = 0;
+        this->tracksRemain = tracksRemain;
+
+        skip_unknown_chunk();
+    };
+    TrackIter() = default;
+
+    inline TrackIter begin() const {
+        return *this;
+    };
+
+    inline TrackIter end() const {
+        return TrackIter(container::ByteSpan(this->data), 1);
+    };
+
+    inline TrackIter& operator++() {
+        size_t chunkLen = utils::read_msb_bytes(data.subspan(cursor + 4, 4));
+
+        if(cursor + chunkLen + 8 > this->data.size())
+            throw std::runtime_error("Unexpected EOF in file!");
+
+        cursor += (8 + chunkLen);
+        tracksRemain--;
+        skip_unknown_chunk();
+
+        return *this;
+    };
+
+    inline track::Track operator*() const {
+        size_t chunkLen = utils::read_msb_bytes(data.subspan(cursor + 4, 4));
+        return track::Track(data.subspan(cursor + 8, cursor + 8 + chunkLen));
+    };
+
+    inline bool operator!=(const TrackIter& other) {
+        return this->data.data() != other.data.data() | \
+                this->tracksRemain != other.tracksRemain;
+    };
 };
 
 class MidiFile {
@@ -511,43 +634,34 @@ private:
     };
     track::Tracks tracks;
 
+    inline uint16_t read_head(container::ByteSpan data) {
+        if(!(!strncmp(reinterpret_cast<const char*>(data.data()), "MThd", 4) &&
+            utils::read_msb_bytes(data.subspan(4, 4)) == 6
+            ))
+            throw std::runtime_error("MThd excepted!");
+
+        this->format = read_midiformat(utils::read_msb_bytes(data.subspan(8, 2)));
+        this->divisionType = data[12] & 0x80;
+        this->ticksPerQuarter = ((data[12] & 0x7F) << 8) + data[13];
+        
+        // Returns track num.
+        return utils::read_msb_bytes(data.subspan(10, 2));
+    }
+
 public:
     MidiFile() = default;
     MidiFile(const container::Bytes& data) {
         if(data.size() < 4)
-            throw "Invaild midi file!";
+            throw std::runtime_error("Invaild midi file!");
 
-        size_t cursor = 0;
-        container::ByteSpan dataSpan = container::ByteSpan(data.begin(), data.end());
+        container::ByteSpan dataSpan(data.data(), data.size());
+        uint16_t trackNum = read_head(dataSpan);
+        size_t cursor = 14;
 
-        if(!(!strncmp(reinterpret_cast<const char*>(dataSpan.data()), "MThd", 4) &&
-            utils::read_msb_bytes(dataSpan.subspan(4, 4)) == 6
-            ))
-            throw "MThd excepted!";
-
-        this->format = read_midiformat(utils::read_msb_bytes(dataSpan.subspan(8, 2)));
-        uint16_t trackNum = utils::read_msb_bytes(dataSpan.subspan(10, 2));
-        this->divisionType = dataSpan[12] & 0x80;
-        this->ticksPerQuarter = ((dataSpan[12] & 0x7F) << 8) + dataSpan[13];
-
-        cursor += 14;
-
-        for (int i = 0; i < trackNum; ++i)
+        TrackIter reader(dataSpan.subspan(cursor, data.size() - cursor), trackNum);
+        for(const auto& track : reader)
         {
-            // Skip unknown chunk
-            while(!strncmp(reinterpret_cast<const char*>(dataSpan.subspan(cursor, 4).data()), "MThd", 4)) {
-                size_t chunkLen = utils::read_msb_bytes(dataSpan.subspan(cursor + 4, 4));
-                cursor += (8 + chunkLen);
-                continue;
-            }
-
-            size_t chunkLen = utils::read_msb_bytes(dataSpan.subspan(cursor + 4, 4));
-
-            if(cursor + chunkLen + 8 > data.size())
-                throw "Unexpected EOF in file!";
-
-            this->tracks.emplace_back(track::Track(dataSpan.subspan(cursor + 8, chunkLen)));
-            cursor += (8 + chunkLen);
+            tracks.emplace_back(track);
         }
     }
 
@@ -555,7 +669,7 @@ public:
         FILE* filePtr = fopen(filepath.c_str(), "rb");
 
         if(!filePtr)
-            throw "Reading file failed!";
+            throw std::runtime_error("Reading file failed!");
 
         fseek(filePtr, 0, SEEK_END);
         size_t fileLen = ftell(filePtr);
