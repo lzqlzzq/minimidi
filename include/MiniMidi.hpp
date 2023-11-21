@@ -1,6 +1,7 @@
 #ifndef __MINIMIDI_HPP
 #define __MINIMIDI_HPP
 
+#include<algorithm>
 #include<cstdint>
 #include<cstddef>
 #include<vector>
@@ -10,6 +11,7 @@
 #include<string>
 #include<iomanip>
 #include<cstring>
+#include<cmath>
 #include<span>
 
 
@@ -201,16 +203,24 @@ typedef struct {
     uint8_t denominator;
 } TimeSignature;
 
+const std::array KEYS {"bC", "bG", "bD", "bA", "bE", "bB", "F", "C", "G", "D", "A", "E", "B", "#F", "#C", "bc", "bg", "bd", "ba", "be", "bb", "f", "c", "g", "d", "a", "e", "b", "#f", "#c"};
+
 class KeySignature {
 public:
     int8_t key;
     uint8_t tonality;
 
     inline const std::string to_string() {
-        static const std::string MINOR_KEYS[] = {"bc", "bg", "bd", "ba", "be", "bb", "f", "c", "g", "d", "a", "e", "b", "#f", "#c"};
-        static const std::string MAJOR_KEYS[] = {"bC", "bG", "bD", "bA", "bE", "bB", "F", "C", "G", "D", "A", "E", "B", "#F", "#C"};
+        return KEYS[this->key + 7 + KEYS.size() / 2 * this->tonality];
+    };
 
-        return this->tonality ? MINOR_KEYS[this->key + 7] : MAJOR_KEYS[this->key + 7];
+    inline static KeySignature from_string(const std::string& ks) {
+        size_t index = std::find_if(KEYS.begin(), KEYS.end(), [&ks] (const std::string& s) {return !s.compare(ks);}) - KEYS.data();
+
+        double tonality;
+        double key = modf(index, &tonality) - 7;
+
+        return KeySignature {static_cast<int8_t>(key), static_cast<uint8_t>(tonality)};
     };
 };
 
@@ -660,6 +670,30 @@ public:
 
 #undef MIDI_FORMAT
 
+class MidiFileIter : public MidiFileBase {
+protected:
+    TrackIter trackIter;
+    container::Bytes data;
+public:
+    MidiFileIter() = default;
+    MidiFileIter(const container::ByteSpan& data) : MidiFileBase(data) {
+        this->data = container::Bytes(data.begin(), data.end());
+        size_t cursor = 14;
+
+        trackIter = TrackIter(data.subspan(cursor, data.size() - cursor), trackNum);
+    }
+
+    static MidiFileIter from_file(const std::string& filepath) {
+        container::Bytes data = utils::read_file(filepath);
+        container::ByteSpan dataSpan(data.data(), data.size());
+        return MidiFileIter(dataSpan);
+    };
+
+    inline TrackIter& track_iter() {
+        return this->trackIter;
+    };
+};
+
 class MidiFile : public MidiFileBase {
 protected:
     track::Tracks tracks;
@@ -682,30 +716,6 @@ public:
 
     inline track::Track& track(uint32_t index) {
         return this->tracks[index];
-    };
-};
-
-class MidiFileIter : public MidiFileBase {
-protected:
-    TrackIter trackIter;
-    container::Bytes data;
-public:
-    MidiFileIter() = default;
-    MidiFileIter(const container::ByteSpan& data) : MidiFileBase(data) {
-        this->data = container::Bytes(data.begin(), data.end());
-        size_t cursor = 14;
-
-        trackIter = TrackIter(data.subspan(cursor, data.size() - cursor), trackNum);
-    }
-
-    static MidiFileIter from_file(const std::string& filepath) {
-        container::Bytes data = utils::read_file(filepath);
-        container::ByteSpan dataSpan(data.data(), data.size());
-        return MidiFileIter(dataSpan);
-    };
-
-    inline TrackIter& track_iter() {
-        return this->trackIter;
     };
 };
 
