@@ -302,6 +302,10 @@ public:
         return utils::read_msb_bytes(std::span{this->data}.subspan(3, 3));
     };
 
+    inline double get_qpm() const {
+        return 60000000.f / static_cast<double>(get_tempo());
+    }
+
     inline TimeSignature get_time_signature() const {
         return TimeSignature {this->data[3], static_cast<uint8_t>(1 << this->data[4])};
     };
