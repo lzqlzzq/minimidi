@@ -6,6 +6,7 @@ see `example/`
 ```
 	parsemidi.cpp: parse midi to readable stdout.
 	dumpmidi.cpp: dump midi to readable txt file.
+	dumpmidi.cpp: dump midi to readable txt file, using iterator interface.
 ```
 
 # Compiling
@@ -13,8 +14,7 @@ No worry, Just copy the hpp into your project and include it!
 And `C++20` standard is recommanded.
 
 # TODO
-* Using span to give a modern C++ implementation.
 * Offer a MIDI serializing API supporting most of the message types.
 * Implement small vector optimization.
-* Implement a iterator reader.
+* Fix the iterator reader in corner case.
 * Better exception handling.
