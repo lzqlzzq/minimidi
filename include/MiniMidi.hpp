@@ -437,73 +437,62 @@ private:
 public:
     Track() = default;
     Track(const container::ByteSpan& data) {
-        uint8_t* cursor = const_cast<uint8_t*>(data.data());
-        uint8_t* bufferEnd = cursor + data.size();
+        size_t cursor = 0;
 
         uint32_t tickOffset = 0;
         uint8_t prevStatusCode = 0x00;
         size_t prevEventLen = 0;
 
-        while(cursor < bufferEnd) {
-            tickOffset += utils::read_variable_length(cursor);
-            message::Message msg;
+        while(cursor < data.size()) {
+            tickOffset += utils::read_variable_length(data, cursor);
 
             // Running status
-            if((*cursor) < 0x80) {
-                container::Bytes messageData = container::Bytes(prevEventLen);
+            if(data[cursor] < 0x80) {
+                container::Bytes msgData = container::Bytes(prevEventLen);
+                container::ByteSpan msgSpan = data.subspan(cursor, prevEventLen - 1);
 
                 if(!prevEventLen)
                     throw "Corrupted MIDI File.";
 
-                messageData[0] = prevStatusCode;
-                std::copy(cursor, cursor + prevEventLen - 1, messageData.begin() + 1);
-                msg = message::Message(tickOffset, messageData);
+                msgData[0] = prevStatusCode;
+                std::copy(msgSpan.begin(), msgSpan.end(), msgData.begin() + 1);
+                this->messages.emplace_back(message::Message(tickOffset, msgData));
                 cursor += prevEventLen - 1;
             }
             // Meta message
-            else if((*cursor) == 0xFF) {
-                prevStatusCode = (*cursor);
-                uint8_t* prevBuffer = cursor;
+            else if(data[cursor] == 0xFF) {
+                message::Message msg;
+                prevStatusCode = 0xFF;
+                size_t prevCursor = cursor;
                 cursor += 2;
-                prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
+                prevEventLen = utils::read_variable_length(data, cursor) + (cursor - prevCursor);
 
-                if(prevBuffer + prevEventLen > bufferEnd)
-                    throw "Unexpected EOF of Meta Event!";
+                msg = message::Message(tickOffset, data.subspan(prevCursor, prevEventLen));
+                this->messages.push_back(msg);
 
-                msg = message::Message(tickOffset, data.subspan(prevBuffer - data.data(), prevBuffer + prevEventLen - data.data()));
-                cursor += prevEventLen - (cursor - prevBuffer);
+                if(msg.get_meta_type() == message::MetaType::EndOfTrack) {
+                    break;
+                }
+                cursor += prevEventLen - (cursor - prevCursor);
             }
             // SysEx message
-            else if((*cursor) == 0xF0) {
-                prevStatusCode = (*cursor);
-                uint8_t* prevBuffer = cursor;
+            else if(data[cursor] == 0xF0) {
+                prevStatusCode = 0xF0;
+                size_t prevCursor = cursor;
                 cursor += 1;
-                prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
+                prevEventLen = utils::read_variable_length(data, cursor) + (cursor - prevCursor);
 
-                if(prevBuffer + prevEventLen > bufferEnd)
-                    throw "Unexpected EOF of SysEx Event!";
-
-                msg = message::Message(tickOffset, data.subspan(prevBuffer - data.data(), prevBuffer + prevEventLen - data.data()));
-                cursor += prevEventLen - (cursor - prevBuffer);
+                // subsspan() will do EOF Detection.
+                this->messages.emplace_back(message::Message(tickOffset, data.subspan(prevCursor, prevEventLen)));
+                cursor += prevEventLen - (cursor - prevCursor);
             }
             // Channel message or system common message
             else {
-                prevStatusCode = (*cursor);
-                prevEventLen = message::message_attr(message::status_to_message_type(*cursor)).length;
+                prevStatusCode = data[cursor];
+                prevEventLen = message::message_attr(message::status_to_message_type(prevStatusCode)).length;
 
-                msg = message::Message(tickOffset, data.subspan(cursor - data.data(), cursor + prevEventLen - data.data()));
+                this->messages.emplace_back(message::Message(tickOffset, data.subspan(cursor, prevEventLen)));
                 cursor += prevEventLen;
-            }
-
-            if(cursor > bufferEnd) {
-                throw "Unexpected EOF in track.";
-            }
-
-            this->messages.push_back(msg);
-
-            if(msg.get_type() == message::MessageType::Meta &&
-                msg.get_meta_type() == message::MetaType::EndOfTrack) {
-                    break;
             }
         }
     };
