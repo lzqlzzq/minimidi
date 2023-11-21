@@ -24,20 +24,24 @@ typedef std::span<const uint8_t> ByteSpan;
 
 namespace utils {
 
-uint32_t read_variable_length(uint8_t* &buffer) {
-    uint32_t value = 0;
+inline container::Bytes read_file(const std::string& filepath) {
+    FILE* filePtr = fopen(filepath.c_str(), "rb");
 
-    for(auto i = 0; i < 4; i++) {
-        value = (value << 7) + (*buffer & 0x7f);
-        if(!(*buffer & 0x80)) break;
-        buffer++;
-    }
+    if(!filePtr)
+        throw std::ios_base::failure("Reading file failed!");
 
-    buffer++;
-    return value;
-};
+    fseek(filePtr, 0, SEEK_END);
+    size_t fileLen = ftell(filePtr);
 
-uint32_t read_variable_length(container::ByteSpan buffer, size_t& cursor) {
+    container::Bytes data = container::Bytes(fileLen);
+    fseek(filePtr, 0, SEEK_SET);
+    fread(data.data(), 1, fileLen, filePtr);
+    fclose(filePtr);
+
+    return data;
+}
+
+inline uint32_t read_variable_length(container::ByteSpan buffer, size_t& cursor) {
     uint32_t value = 0;
 
     for(auto i = 0; i < 4; i++) {
@@ -211,7 +215,7 @@ public:
 };
 
 class Message {
-private:
+protected:
     uint32_t time;
     container::Bytes data;
     MessageType msgType;
@@ -382,9 +386,9 @@ typedef std::vector<message::Message> Messages;
 
 
 namespace track {
-/*
+
 class MessageIter {
-private:
+protected:
     size_t cursor;
     container::ByteSpan data;
     uint32_t tickOffset;
@@ -403,97 +407,85 @@ public:
         prevEventLen = 0;
     };
 
-    MessageIter(bool is_eot) {
-        is_eot = is_eot;
-    };
-
     MessageIter() = default;
 
-    MessageIter begin() const {
-        return *this;
+    inline message::Message read_a_message() {
+        if(is_eot)
+            throw std::out_of_range("There is no message to read.");
+
+        tickOffset += utils::read_variable_length(data, cursor);
+
+        // Running status
+        if(data[cursor] < 0x80) {
+            container::Bytes msgData = container::Bytes(prevEventLen);
+            container::ByteSpan msgSpan = data.subspan(cursor, prevEventLen - 1);
+            cursor += prevEventLen - 1;
+
+            if(!prevEventLen)
+                throw std::runtime_error("Corrupted MIDI File.");
+
+            msgData[0] = prevStatusCode;
+            std::copy(msgSpan.begin(), msgSpan.end(), msgData.begin() + 1);
+            return message::Message(tickOffset, msgData);
+        }
+        // Meta message
+        else if(data[cursor] == 0xFF) {
+            prevStatusCode = 0xFF;
+            size_t prevCursor = cursor;
+            cursor += 2;
+            prevEventLen = utils::read_variable_length(data, cursor) + (cursor - prevCursor);
+            cursor += prevEventLen - (cursor - prevCursor);
+
+            message::Message curMessage = message::Message(tickOffset, data.subspan(prevCursor, prevEventLen));
+            if(curMessage.get_meta_type() == message::MetaType::EndOfTrack) {
+                is_eot = true;
+            }
+            return curMessage;
+        }
+        // SysEx message
+        else if(data[cursor] == 0xF0) {
+            prevStatusCode = 0xF0;
+            size_t prevCursor = cursor;
+            cursor += 1;
+            prevEventLen = utils::read_variable_length(data, cursor) + (cursor - prevCursor);
+            cursor += prevEventLen - (cursor - prevCursor);
+
+            // subsspan() will do EOF Detection.
+            return message::Message(tickOffset, data.subspan(prevCursor, prevEventLen));
+        }
+        // Channel message or system common message
+        else {
+            prevStatusCode = data[cursor];
+            prevEventLen = message::message_attr(message::status_to_message_type(prevStatusCode)).length;
+            cursor += prevEventLen;
+
+            return message::Message(tickOffset, data.subspan(cursor, prevEventLen));
+        }
     };
 
-    MessageIter end() const {
-        return MessageIter(true);
-    };
-
-    MessageIter& operator++() {
-        ;
-    };
-
-    message::Message operator*() const {
-        ;
-    };
-
-    bool operator!=(const MessageIter& other) {
-        return this->is_eot != other.is_eot;
+    inline bool is_empty() const {
+        return is_eot;
     }
-}
-*/
+};
+
 class Track {
-private:
+protected:
     message::Messages messages;
 
 public:
     Track() = default;
+
+    Track(MessageIter& iter) {
+        while(!iter.is_empty()) {
+            messages.emplace_back(iter.read_a_message());
+        }
+    };
+
     Track(const container::ByteSpan& data) {
-        size_t cursor = 0;
+        MessageIter iter(data);
 
-        uint32_t tickOffset = 0;
-        uint8_t prevStatusCode = 0x00;
-        size_t prevEventLen = 0;
-
-        while(cursor < data.size()) {
-            tickOffset += utils::read_variable_length(data, cursor);
-
-            // Running status
-            if(data[cursor] < 0x80) {
-                container::Bytes msgData = container::Bytes(prevEventLen);
-                container::ByteSpan msgSpan = data.subspan(cursor, prevEventLen - 1);
-
-                if(!prevEventLen)
-                    throw "Corrupted MIDI File.";
-
-                msgData[0] = prevStatusCode;
-                std::copy(msgSpan.begin(), msgSpan.end(), msgData.begin() + 1);
-                this->messages.emplace_back(message::Message(tickOffset, msgData));
-                cursor += prevEventLen - 1;
-            }
-            // Meta message
-            else if(data[cursor] == 0xFF) {
-                message::Message msg;
-                prevStatusCode = 0xFF;
-                size_t prevCursor = cursor;
-                cursor += 2;
-                prevEventLen = utils::read_variable_length(data, cursor) + (cursor - prevCursor);
-
-                msg = message::Message(tickOffset, data.subspan(prevCursor, prevEventLen));
-                this->messages.push_back(msg);
-
-                if(msg.get_meta_type() == message::MetaType::EndOfTrack) {
-                    break;
-                }
-                cursor += prevEventLen - (cursor - prevCursor);
-            }
-            // SysEx message
-            else if(data[cursor] == 0xF0) {
-                prevStatusCode = 0xF0;
-                size_t prevCursor = cursor;
-                cursor += 1;
-                prevEventLen = utils::read_variable_length(data, cursor) + (cursor - prevCursor);
-
-                // subsspan() will do EOF Detection.
-                this->messages.emplace_back(message::Message(tickOffset, data.subspan(prevCursor, prevEventLen)));
-                cursor += prevEventLen - (cursor - prevCursor);
-            }
-            // Channel message or system common message
-            else {
-                prevStatusCode = data[cursor];
-                prevEventLen = message::message_attr(message::status_to_message_type(prevStatusCode)).length;
-
-                this->messages.emplace_back(message::Message(tickOffset, data.subspan(cursor, prevEventLen)));
-                cursor += prevEventLen;
-            }
+        while(!iter.is_empty()) {
+            messages.emplace_back(iter.read_a_message());
         }
     };
 
@@ -558,7 +550,7 @@ inline MidiFormat read_midiformat(uint16_t data) {
 };
 
 class TrackIter {
-private:
+protected:
     size_t cursor;
     uint16_t tracksRemain;
     container::ByteSpan data;
@@ -576,54 +568,45 @@ public:
         this->data = data;
         this->cursor = 0;
         this->tracksRemain = tracksRemain;
-
-        skip_unknown_chunk();
     };
     TrackIter() = default;
 
-    inline TrackIter begin() const {
-        return *this;
-    };
-
-    inline TrackIter end() const {
-        return TrackIter(container::ByteSpan(this->data), 1);
-    };
-
-    inline TrackIter& operator++() {
-        size_t chunkLen = utils::read_msb_bytes(data.subspan(cursor + 4, 4));
-
-        if(cursor + chunkLen + 8 > this->data.size())
-            throw std::runtime_error("Unexpected EOF in file!");
-
-        cursor += (8 + chunkLen);
-        tracksRemain--;
+    inline container::ByteSpan read_a_chunk() {
         skip_unknown_chunk();
+        tracksRemain--;
 
-        return *this;
-    };
-
-    inline track::Track operator*() const {
         size_t chunkLen = utils::read_msb_bytes(data.subspan(cursor + 4, 4));
-        return track::Track(data.subspan(cursor + 8, cursor + 8 + chunkLen));
+        size_t chunkStart = cursor + 8;
+        cursor += (8 + chunkLen);
+
+        return data.subspan(chunkStart, chunkStart + chunkLen);
+    }
+
+    inline track::Track read_a_track() {
+        return track::Track(read_a_chunk());
     };
 
-    inline bool operator!=(const TrackIter& other) {
-        return this->data.data() != other.data.data() | \
-                this->tracksRemain != other.tracksRemain;
+    inline track::MessageIter read_a_message_iter() {
+        return track::MessageIter(read_a_chunk());
     };
+
+
+    inline bool is_empty() const {
+        return !tracksRemain;
+    }
 };
 
-class MidiFile {
-private:
+class MidiFileBase {
+protected:
     MidiFormat format;
     uint16_t divisionType: 1;
     union {
         struct { uint16_t ticksPerQuarter: 15; };
         struct { uint16_t negtiveSmpte: 7; uint16_t ticksPerFrame: 8; };
     };
-    track::Tracks tracks;
+    uint16_t trackNum;
 
-    inline uint16_t read_head(container::ByteSpan data) {
+    inline void read_head(container::ByteSpan data) {
         if(!(!strncmp(reinterpret_cast<const char*>(data.data()), "MThd", 4) &&
             utils::read_msb_bytes(data.subspan(4, 4)) == 6
             ))
@@ -632,44 +615,17 @@ private:
         this->format = read_midiformat(utils::read_msb_bytes(data.subspan(8, 2)));
         this->divisionType = data[12] & 0x80;
         this->ticksPerQuarter = ((data[12] & 0x7F) << 8) + data[13];
-        
-        // Returns track num.
-        return utils::read_msb_bytes(data.subspan(10, 2));
-    }
+        this->trackNum = utils::read_msb_bytes(data.subspan(10, 2));
+    };
 
 public:
-    MidiFile() = default;
-    MidiFile(const container::Bytes& data) {
+    MidiFileBase() = default;
+    MidiFileBase(const container::ByteSpan& data) {
         if(data.size() < 4)
             throw std::runtime_error("Invaild midi file!");
 
-        container::ByteSpan dataSpan(data.data(), data.size());
-        uint16_t trackNum = read_head(dataSpan);
-        size_t cursor = 14;
-
-        TrackIter reader(dataSpan.subspan(cursor, data.size() - cursor), trackNum);
-        for(const auto& track : reader)
-        {
-            tracks.emplace_back(track);
-        }
+        read_head(data);
     }
-
-    static MidiFile from_file(const std::string& filepath) {
-        FILE* filePtr = fopen(filepath.c_str(), "rb");
-
-        if(!filePtr)
-            throw std::runtime_error("Reading file failed!");
-
-        fseek(filePtr, 0, SEEK_END);
-        size_t fileLen = ftell(filePtr);
-
-        container::Bytes data = container::Bytes(fileLen);
-        fseek(filePtr, 0, SEEK_SET);
-        fread(data.data(), 1, fileLen, filePtr);
-        fclose(filePtr);
-
-        return MidiFile(data);
-    };
 
     inline MidiFormat get_format() const {
         return this->format;
@@ -697,16 +653,59 @@ public:
         else { std::cerr << "Division type 0 have no tps." << std::endl; return -1; };
     };
 
-    inline track::Track& track(uint32_t index) {
-        return this->tracks[index];
-    };
-
     inline size_t track_num() const {
-        return this->tracks.size();
+        return this->trackNum;
     };
 };
 
 #undef MIDI_FORMAT
+
+class MidiFile : public MidiFileBase {
+protected:
+    track::Tracks tracks;
+public:
+    MidiFile() = default;
+    MidiFile(const container::ByteSpan& data) : MidiFileBase(data) {
+        size_t cursor = 14;
+
+        TrackIter iter(data.subspan(cursor, data.size() - cursor), trackNum);
+        while(!iter.is_empty()) {
+            tracks.emplace_back(iter.read_a_track());
+        }
+    };
+
+    static MidiFile from_file(const std::string& filepath) {
+        container::Bytes data = utils::read_file(filepath);
+        container::ByteSpan dataSpan(data.data(), data.size());
+        return MidiFile(dataSpan);
+    };
+
+    inline track::Track& track(uint32_t index) {
+        return this->tracks[index];
+    };
+};
+
+class MidiFileIter : public MidiFileBase {
+protected:
+    TrackIter trackIter;
+public:
+    MidiFileIter() = default;
+    MidiFileIter(const container::ByteSpan& data) : MidiFileBase(data) {
+        size_t cursor = 14;
+
+        trackIter = TrackIter(data.subspan(cursor, data.size() - cursor), trackNum);
+    }
+
+    static MidiFileIter from_file(const std::string& filepath) {
+        container::Bytes data = utils::read_file(filepath);
+        container::ByteSpan dataSpan(data.data(), data.size());
+        return MidiFileIter(dataSpan);
+    };
+
+    inline TrackIter& track_iter() {
+        return this->trackIter;
+    };
+};
 
 std::ostream& operator<<(std::ostream& out, MidiFile& file) {
     out << "File format: " << file.get_format_string() << std::endl;
