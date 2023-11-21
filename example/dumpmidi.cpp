@@ -9,15 +9,12 @@
 #include<iostream>
 #include<sstream>
 #include<string>
-#include<filesystem>
 #include<cstddef>
-#include<set>
 #include<vector>
 #include<fstream>
 #include<algorithm>
 #include<functional>
 #include"MiniMidi.hpp"
-
 
 using namespace std;
 using namespace minimidi;
