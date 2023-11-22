@@ -717,7 +717,8 @@ protected:
     };
     uint16_t trackNum;
 
-    inline void read_head(container::ByteSpan data) {
+    inline void read_head(const container::ByteSpan& data) {
+        container::check_span_boundary(data, 14);
         if(!(!strncmp(reinterpret_cast<const char*>(data.data()), "MThd", 4) &&
             utils::read_msb_bytes(data.subspan(4, 4)) == 6
             ))
