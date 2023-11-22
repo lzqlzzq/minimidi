@@ -6,7 +6,7 @@ see `example/`
 ```
 	parsemidi.cpp: parse midi to readable stdout.
 	dumpmidi.cpp: dump midi to readable txt file.
-	dumpmidi.cpp: dump midi to readable txt file, using iterator interface.
+	dumpmidi_iter.cpp: dump midi to readable txt file, using iterator interface.
 ```
 
 # Compiling
