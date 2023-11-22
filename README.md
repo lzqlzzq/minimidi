@@ -1,5 +1,5 @@
 # minimidi
-Minimidi is a minimal, header-only, zero-dependent(only std), **low-level** MIDI file manupilation library.
+Minimidi is a minimal, header-only, zero-dependent(only std), **low-level** MIDI file manipulation library.
 
 # Examples
 see `example/`
