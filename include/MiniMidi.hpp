@@ -13,6 +13,7 @@
 #include<cstring>
 #include<cmath>
 #include<span>
+#include<numeric>
 
 
 namespace minimidi {
@@ -41,7 +42,7 @@ inline container::Bytes read_file(const std::string& filepath) {
     fclose(filePtr);
 
     return data;
-}
+};
 
 inline uint32_t read_variable_length(container::ByteSpan buffer, size_t& cursor) {
     uint32_t value = 0;
@@ -54,7 +55,20 @@ inline uint32_t read_variable_length(container::ByteSpan buffer, size_t& cursor)
 
     cursor++;
     return value;
-}
+};
+
+inline container::Bytes make_variable_length(uint32_t num) {
+    uint8_t byteNum = ceil(log2(num + 1) / 7);
+    container::Bytes result(byteNum);
+
+    for(auto i = 0; i < byteNum; i++) {
+        result[i] = (num >> (7 * (byteNum - i - 1)));
+        result[i] |= 0x80;
+    }
+    result.back() &= 0x7F;
+
+    return result;
+};
 
 inline uint64_t read_msb_bytes(container::ByteSpan buffer) {
     uint64_t res = 0;
@@ -230,6 +244,11 @@ protected:
     container::Bytes data;
     MessageType msgType;
 
+    Message(uint32_t time, const MessageType& type) {
+        this->time = time;
+        this->msgType = type;
+    }
+
 public:
     Message() = default;
     Message(uint32_t time, const container::ByteSpan& msgData) {
@@ -243,7 +262,33 @@ public:
         this->time = time;
         this->msgType = status_to_message_type(msgData[0]);
 
-        this->data = msgData;
+        this->data = container::Bytes(msgData);
+    };
+
+    /*
+    Message(uint32_t time, const MessageType& type) : Message(time, type) {
+        if(!(type == MessageType::TuneRequest |
+            type == MessageType::SysExEnd |
+            type == MessageType::TimingClock |
+            type == MessageType::StartSequence |
+            type == MessageType::ContinueSequence |
+            type == MessageType::StopSequence |
+            type == MessageType::ActiveSensing))
+            throw std::invalid_argument("The argument combination should be these message type.");
+
+        this->data = container::Bytes(1);
+        this->data[0] = uint8_t(type);
+    }
+    */
+
+    Message(uint32_t time, const MessageType& type, const MetaType& metaType) : Message(time, type) {
+        if(!(type == MessageType::Meta &
+            metaType == MetaType::EndOfTrack))
+            throw std::invalid_argument("The argument combination should be these message type.");
+        this->data = container::Bytes(3);
+        this->data[0] = uint8_t(type);
+        this->data[1] = uint8_t(metaType);
+        this->data[2] = 0x00;
     };
 
     inline uint32_t get_time() const {
@@ -503,8 +548,8 @@ public:
         }
     };
 
-    Track(message::Messages message) {
-        this->messages = std::vector(message);
+    Track(message::Messages messages) {
+        this->messages = std::vector(messages);
     };
 
     inline message::Message& message(uint32_t index) {
@@ -513,6 +558,49 @@ public:
 
     inline size_t message_num() const {
         return this->messages.size();
+    };
+
+    inline container::Bytes to_bytes() {
+        message::Messages messages_to_bytes(messages.size());
+        std::copy_if(messages.begin(),
+                    messages.end(),
+                    messages_to_bytes.end(),
+                    [](const message::Message& msg) {
+                        return !(msg.get_type() != message::MessageType::Meta && \
+                                msg.get_meta_type() != message::MetaType::EndOfTrack);
+                    });
+
+        std::sort(messages_to_bytes.begin(),
+                messages_to_bytes.end(),
+                [](const message::Message& msg1, const message::Message& msg2){
+            return msg1.get_time() < msg2.get_time();
+        });
+        messages_to_bytes.emplace_back(message::Message(messages_to_bytes.back().get_time(),
+                                                        message::MessageType::Meta,
+                                                        message::MetaType::EndOfTrack));
+
+        std::vector<uint32_t> times(messages_to_bytes.size());
+        std::vector<size_t> dataLen(messages_to_bytes.size());
+        for(int i = 0; i < messages_to_bytes.size(); ++i) {
+            times[i] = messages_to_bytes[i].get_time();
+            dataLen[i] = messages_to_bytes[i].get_data().size();
+        }
+        std::adjacent_difference(times.begin(), times.end(), times.begin());
+
+        container::Bytes result(std::reduce(dataLen.begin(), dataLen.end()) + 4 * messages_to_bytes.size() + 3);
+        size_t cursor = 0;
+        for(int i = 0; i < messages_to_bytes.size(); ++i) {
+            container::Bytes timeData = utils::make_variable_length(times[i]);
+            std::copy(timeData.begin(), timeData.end(), result.begin() + cursor);
+            cursor += timeData.size();
+
+            std::copy(messages_to_bytes[i].get_data().begin(), messages_to_bytes[i].get_data().end(), result.begin() + cursor);
+            cursor += messages_to_bytes[i].get_data().size();
+        }
+
+        result.resize(cursor);
+        result.shrink_to_fit();
+        return result;
     };
 };
 
