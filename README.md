@@ -11,7 +11,7 @@ see `example/`
 
 # Compiling
 No worry, Just copy the hpp into your project and include it!
-And `C++20` standard is recommanded.
+And `C++20` standard is compulsory because usage of `std::span`.
 
 # TODO
 * Offer a MIDI serializing API supporting most of the message types.
