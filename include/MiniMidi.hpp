@@ -23,6 +23,11 @@ namespace container {
 typedef std::vector<uint8_t> Bytes;
 typedef std::span<const uint8_t> ByteSpan;
 
+inline void check_span_boundary(const ByteSpan& data, size_t index) {
+    if(index >= data.size())
+        throw std::out_of_range("Span index is out of range!");
+}
+
 }
 
 namespace utils {
@@ -344,7 +349,7 @@ public:
     };
 
     inline uint32_t get_tempo() const {
-        return utils::read_msb_bytes(std::span{this->data}.subspan(3, 3));
+        return utils::read_msb_bytes(container::ByteSpan{this->data}.subspan(3, 3));
     };
 
     inline double get_qpm() const {
@@ -473,10 +478,12 @@ public:
             throw std::out_of_range("There is no message to read.");
 
         tickOffset += utils::read_variable_length(data, cursor);
+        container::check_span_boundary(data, cursor);
 
         // Running status
         if(data[cursor] < 0x80) {
             container::Bytes msgData = container::Bytes(prevEventLen);
+            container::check_span_boundary(data, cursor + prevEventLen - 1);
             container::ByteSpan msgSpan = data.subspan(cursor, prevEventLen - 1);
             cursor += prevEventLen - 1;
 
@@ -495,6 +502,7 @@ public:
             prevEventLen = utils::read_variable_length(data, cursor) + (cursor - prevCursor);
             cursor += prevEventLen - (cursor - prevCursor);
 
+            container::check_span_boundary(data, prevCursor + prevEventLen);
             message::Message curMessage = message::Message(tickOffset, data.subspan(prevCursor, prevEventLen));
             if(curMessage.get_meta_type() == message::MetaType::EndOfTrack) {
                 is_eot = true;
@@ -509,7 +517,7 @@ public:
             prevEventLen = utils::read_variable_length(data, cursor) + (cursor - prevCursor);
             cursor += prevEventLen - (cursor - prevCursor);
 
-            // subsspan() will do EOF Detection.
+            container::check_span_boundary(data, prevCursor + prevEventLen);
             return message::Message(tickOffset, data.subspan(prevCursor, prevEventLen));
         }
         // Channel message or system common message
@@ -518,7 +526,8 @@ public:
             prevEventLen = message::message_attr(message::status_to_message_type(prevStatusCode)).length;
             cursor += prevEventLen;
 
-            return message::Message(tickOffset, data.subspan(cursor, prevEventLen));
+            container::check_span_boundary(data, cursor + prevEventLen);
+            return message::Message(tickOffset, data.subspan(cursor - prevEventLen, cursor));
         }
     };
 
