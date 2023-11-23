@@ -667,7 +667,7 @@ protected:
     container::ByteSpan data;
 
     void skip_unknown_chunk() {
-        while(!strncmp(reinterpret_cast<const char*>(data.subspan(cursor, 4).data()), "MThd", 4)) {
+        while(strncmp(reinterpret_cast<const char*>(data.data() + cursor), "MTrk", 4) != 0) {
             size_t chunkLen = utils::read_msb_bytes(data.subspan(cursor + 4, 4));
             cursor += (8 + chunkLen);
             continue;
@@ -684,14 +684,13 @@ public:
 
     inline container::ByteSpan read_a_chunk() {
         skip_unknown_chunk();
-        tracksRemain--;
 
         size_t chunkLen = utils::read_msb_bytes(data.subspan(cursor + 4, 4));
-        size_t chunkStart = cursor + 8;
-        cursor += (8 + chunkLen);
+        cursor += (chunkLen + 8);
+        tracksRemain--;
 
-        return data.subspan(chunkStart, chunkStart + chunkLen);
-    }
+        return data.subspan(cursor - chunkLen, cursor);
+    };
 
     inline track::Track read_a_track() {
         return track::Track(read_a_chunk());
@@ -700,7 +699,6 @@ public:
     inline track::MessageIter read_a_message_iter() {
         return track::MessageIter(read_a_chunk());
     };
-
 
     inline bool is_empty() const {
         return !tracksRemain;
