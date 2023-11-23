@@ -476,7 +476,6 @@ public:
     inline message::Message read_a_message() {
         if(is_eot)
             throw std::out_of_range("There is no message to read.");
-
         tickOffset += utils::read_variable_length(data, cursor);
         container::check_span_boundary(data, cursor);
 
@@ -502,7 +501,7 @@ public:
             prevEventLen = utils::read_variable_length(data, cursor) + (cursor - prevCursor);
             cursor += prevEventLen - (cursor - prevCursor);
 
-            container::check_span_boundary(data, prevCursor + prevEventLen);
+            container::check_span_boundary(data, prevCursor + prevEventLen - 1);
             message::Message curMessage = message::Message(tickOffset, data.subspan(prevCursor, prevEventLen));
             if(curMessage.get_meta_type() == message::MetaType::EndOfTrack) {
                 is_eot = true;
@@ -517,7 +516,7 @@ public:
             prevEventLen = utils::read_variable_length(data, cursor) + (cursor - prevCursor);
             cursor += prevEventLen - (cursor - prevCursor);
 
-            container::check_span_boundary(data, prevCursor + prevEventLen);
+            container::check_span_boundary(data, prevCursor + prevEventLen - 1);
             return message::Message(tickOffset, data.subspan(prevCursor, prevEventLen));
         }
         // Channel message or system common message
@@ -526,7 +525,7 @@ public:
             prevEventLen = message::message_attr(message::status_to_message_type(prevStatusCode)).length;
             cursor += prevEventLen;
 
-            container::check_span_boundary(data, cursor + prevEventLen);
+            container::check_span_boundary(data, cursor + prevEventLen - 1);
             return message::Message(tickOffset, data.subspan(cursor - prevEventLen, cursor));
         }
     };
@@ -687,14 +686,13 @@ public:
 
     inline container::ByteSpan read_a_chunk() {
         skip_unknown_chunk();
-
         container::check_span_boundary(data, cursor + 4);
         size_t chunkLen = utils::read_msb_bytes(data.subspan(cursor + 4, 4));
         cursor += (chunkLen + 8);
         tracksRemain--;
 
         container::check_span_boundary(data, cursor - 1);
-        return data.subspan(cursor - chunkLen, cursor);
+        return data.subspan(cursor - chunkLen, chunkLen);
     };
 
     inline track::Track read_a_track() {
