@@ -463,7 +463,7 @@ protected:
 public:
     MessageIter(const container::ByteSpan& data) {
         cursor = 0;
-        this->data = data;
+        this->data = container::ByteSpan(data.data(), data.size());
         is_eot = false;
 
         tickOffset = 0;
@@ -667,9 +667,12 @@ protected:
     container::ByteSpan data;
 
     void skip_unknown_chunk() {
+        container::check_span_boundary(data, cursor + 4);
         while(strncmp(reinterpret_cast<const char*>(data.data() + cursor), "MTrk", 4) != 0) {
             size_t chunkLen = utils::read_msb_bytes(data.subspan(cursor + 4, 4));
             cursor += (8 + chunkLen);
+            container::check_span_boundary(data, cursor + 4);
+
             continue;
         }
     };
@@ -685,10 +688,12 @@ public:
     inline container::ByteSpan read_a_chunk() {
         skip_unknown_chunk();
 
+        container::check_span_boundary(data, cursor + 4);
         size_t chunkLen = utils::read_msb_bytes(data.subspan(cursor + 4, 4));
         cursor += (chunkLen + 8);
         tracksRemain--;
 
+        container::check_span_boundary(data, cursor - 1);
         return data.subspan(cursor - chunkLen, cursor);
     };
 
@@ -780,7 +785,7 @@ public:
         this->data = container::Bytes(data.begin(), data.end());
         size_t cursor = 14;
 
-        trackIter = TrackIter(data.subspan(cursor, data.size() - cursor), trackNum);
+        trackIter = TrackIter(container::ByteSpan(this->data.begin() + cursor, this->data.size() - cursor), trackNum);
     }
 
     static MidiFileIter from_file(const std::string& filepath) {
