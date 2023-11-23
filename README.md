@@ -15,5 +15,6 @@ And `C++20` standard is compulsory because usage of `std::span`.
 
 # TODO
 * Offer a MIDI serializing API supporting most of the message types.
+* Fix the potential Segmentation Fault when using MidiFileIter interface.
 * Implement small vector optimization.
 * Better exception handling.
