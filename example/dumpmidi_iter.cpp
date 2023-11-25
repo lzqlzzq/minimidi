@@ -22,34 +22,29 @@ using namespace std;
 using namespace minimidi;
 
 
-void write_file(const string& from, const string& to)
-{
+void write_file(const string &from, const string &to) {
     ofstream dst(to, ios::binary);
-
-    file::MidiFileIter midiFileIter = file::MidiFileIter::from_file(from);
+    auto file = file::MidiFileStream::from_file(from);
+    cout << "Writing to " << to << endl;
+    cout << "Midi file has " << file.track_num() << " tracks" << endl;
     int t = 0;
-    while(!midiFileIter.track_iter().is_empty()) {
+    for (auto track: file) {
         dst << "Track: " << t << endl;
-        track::MessageIter msgIter = midiFileIter.track_iter().read_a_message_iter();
-        while(!msgIter.is_empty()) {
-            dst << "    " << msgIter.read_a_message() << endl;
+        for (auto event: track) {
+            dst << "    " << event << endl;
         }
         dst << endl;
         t++;
     }
 };
 
-int main(int argc, char *argv[])
-{
-    if(argc == 3)
-    {
+int main(int argc, char *argv[]) {
+    if (argc == 3) {
         string source_dir = string(argv[1]);
         string target_dir = string(argv[2]);
 
         write_file(source_dir, target_dir);
-    }
-    else
-    {
+    } else {
         std::cout << "Usage: ./midiwrite <source_midifile>.mid <target_textfile>.txt" << std::endl;
     }
 
