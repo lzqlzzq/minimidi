@@ -9,10 +9,10 @@
 #include<cstdlib>
 #include<iostream>
 #include<string>
+#include <sstream>
 #include<iomanip>
 #include<exception>
 #include<cstring>
-#include<span>
 #include"svector.h"
 
 namespace minimidi {
@@ -23,7 +23,6 @@ typedef std::vector<uint8_t> Bytes;
 
 // size of SmallBytes is totally 8 bytes on the stack (7 bytes + 1 byte for size)
 typedef ankerl::svector<uint8_t, 7> SmallBytes;
-typedef std::span<const uint8_t> ByteSpan;
 
 // to_string func for SmallBytes
 inline std::string to_string(const SmallBytes &data) {
@@ -383,10 +382,11 @@ private:
 public:
     Track() = default;
 
-    explicit Track(const container::ByteSpan data) {
-        messages.reserve(data.size()/3 + 100);
-        auto *cursor = const_cast<uint8_t *>(data.data());
-        uint8_t *bufferEnd = cursor + data.size();
+    // explicit Track(const container::ByteSpan data) {
+    Track(uint8_t *cursor, size_t size) {
+        messages.reserve(size/3 + 100);
+        // auto *cursor = const_cast<uint8_t *>(data.data());
+        uint8_t *bufferEnd = cursor + size;
 
         uint32_t tickOffset = 0;
         uint8_t prevStatusCode = 0x00;
@@ -566,7 +566,7 @@ public:
             if (cursor + chunkLen + 8 > bufferEnd)
                 throw std::ios_base::failure("Unexpected EOF in file!");
 
-            this->tracks.emplace_back(container::ByteSpan(cursor + 8, cursor + 8 + chunkLen));
+            this->tracks.emplace_back(cursor + 8, chunkLen);
             cursor += (8 + chunkLen);
         }
         tracks.shrink_to_fit();
