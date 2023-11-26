@@ -643,6 +643,10 @@ public:
         return this->messages.size();
     };
 
+    inline void push_back(const message::Message& msg) {
+        this->messages.push_back(message::Message(msg));
+    }
+
     inline container::Bytes to_bytes() {
         message::Messages messages_to_bytes(messages.size());
         std::copy_if(messages.begin(),
@@ -812,54 +816,6 @@ public:
 
 #undef MIDI_FORMAT
 
-
-class MidiFile : public MidiFileBase {
-protected:
-    track::Tracks tracks;
-public:
-    MidiFile() = default;
-
-    MidiFile(const container::ByteSpan data);
-
-    MidiFile(const container::Bytes &data);
-
-    MidiFile(container::Bytes &&data);
-
-    static MidiFile from_file(const std::string &filepath);
-
-    inline track::Track &track(size_t index) {
-        return this->tracks[index];
-    };
-
-    inline const track::Track &track(size_t index) const {
-        return this->tracks[index];
-    };
-
-    inline track::Track &operator[](size_t index) {
-        return this->tracks[index];
-    };
-
-    inline const track::Track &operator[](size_t index) const {
-        return this->tracks[index];
-    };
-
-    inline track::Track &at(size_t index) {
-        return this->tracks.at(index);
-    };
-
-    inline const track::Track &at(size_t index) const {
-        return this->tracks.at(index);
-    };
-
-    inline track::Tracks::iterator begin() {
-        return this->tracks.begin();
-    };
-
-    inline track::Tracks::iterator end() {
-        return this->tracks.end();
-    };
-};
-
 class MidiFileStream : public MidiFileBase {
 protected:
     container::Bytes data;
@@ -881,7 +837,7 @@ public:
     static MidiFileStream from_file(const std::string &filepath) {
         container::Bytes data = utils::read_file(filepath);
         return MidiFileStream(std::move(data));
-    }
+    };
 
     struct Iterator {
     protected:
@@ -932,7 +888,10 @@ public:
         };
 
         inline Iterator &operator++() {
-            this->currentChunk = read_a_chunk();
+            if(tracksRemain != 0)
+                this->currentChunk = read_a_chunk();
+            else
+                tracksRemain--;
             return *this;
         };
 
@@ -951,6 +910,73 @@ public:
 
     inline size_t track_num() {
         return this->trackNum;
+    };
+};
+
+class MidiFile : public MidiFileBase {
+protected:
+    track::Tracks tracks;
+
+    inline void read_tracks(const container::ByteSpan data) {
+        MidiFileStream stream(data);
+        for (auto trackStream : stream) {
+            track::Track track;
+            for (auto message : trackStream) {
+                track.push_back(message);
+            }
+            this->tracks.push_back(track);
+        }
+    }
+public:
+    MidiFile() = default;
+
+    MidiFile(const container::ByteSpan data) : MidiFileBase(data) {
+        read_tracks(data);
+    };
+
+    MidiFile(const container::Bytes &data) : MidiFileBase(container::ByteSpan(data)) {
+        read_tracks(container::ByteSpan(data));
+    };
+
+    MidiFile(container::Bytes &&data) : MidiFileBase(container::ByteSpan(data)) {
+        read_tracks(container::ByteSpan(data));
+    };
+
+    static MidiFile from_file(const std::string &filepath) {
+        container::Bytes data = utils::read_file(filepath);
+        return MidiFile(data);
+    };
+
+    inline track::Track &track(size_t index) {
+        return this->tracks[index];
+    };
+
+    inline const track::Track &track(size_t index) const {
+        return this->tracks[index];
+    };
+
+    inline track::Track &operator[](size_t index) {
+        return this->tracks[index];
+    };
+
+    inline const track::Track &operator[](size_t index) const {
+        return this->tracks[index];
+    };
+
+    inline track::Track &at(size_t index) {
+        return this->tracks.at(index);
+    };
+
+    inline const track::Track &at(size_t index) const {
+        return this->tracks.at(index);
+    };
+
+    inline track::Tracks::iterator begin() {
+        return this->tracks.begin();
+    };
+
+    inline track::Tracks::iterator end() {
+        return this->tracks.end();
     };
 };
 
