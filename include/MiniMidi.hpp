@@ -382,6 +382,7 @@ public:
     Track() = default;
 
     explicit Track(const container::Bytes &data) {
+        messages.reserve(data.size()/3 + 100);
         auto *cursor = const_cast<uint8_t *>(data.data());
         uint8_t *bufferEnd = cursor + data.size();
 
@@ -452,6 +453,7 @@ public:
                 break;
             }
         }
+        messages.shrink_to_fit();
     };
 
     explicit Track(message::Messages &&message) {
@@ -522,7 +524,7 @@ private:
             uint16_t ticksPerQuarter: 15;
         };
         struct {
-            uint16_t negtiveSmpte: 7;
+            uint16_t negativeSmpte: 7;
             uint16_t ticksPerFrame: 8;
         };
     };
@@ -549,7 +551,7 @@ public:
         this->ticksPerQuarter = (((*(cursor + 12)) & 0x7F) << 8) + (*(cursor + 13));
 
         cursor += 14;
-
+        tracks.reserve(trackNum);
         for (int i = 0; i < trackNum; ++i) {
             // Skip unknown chunk
             while (!strncmp(reinterpret_cast<const char *>(cursor), "MThd", 4)) {
@@ -565,6 +567,7 @@ public:
             this->tracks.emplace_back(container::Bytes(cursor + 8, cursor + 8 + chunkLen));
             cursor += (8 + chunkLen);
         }
+        tracks.shrink_to_fit();
     }
 
     static MidiFile from_file(const std::string &filepath) {
@@ -605,7 +608,7 @@ public:
     };
 
     [[nodiscard]] inline uint16_t get_frame_per_second() const {
-        return (~(this->negtiveSmpte - 1)) & 0x3F;
+        return (~(this->negativeSmpte - 1)) & 0x3F;
     };
 
     [[nodiscard]] inline uint16_t get_tick_per_second() const {
