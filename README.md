@@ -1,6 +1,9 @@
 # minimidi
 Minimidi is a minimal, header-only, zero-dependent(only std), **low-level** MIDI file manipulation library.
 
+This branch (iterator) is a new implementation of minimidi, using iterator interface, span and svo.
+But its performance is significantly worse than the old one, so I will keep the old one.
+
 # Examples
 see `example/`
 ```
