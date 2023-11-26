@@ -14,6 +14,7 @@
 #include<cmath>
 #include<span>
 #include<numeric>
+#include"svector.h"
 
 
 namespace minimidi {
@@ -21,12 +22,24 @@ namespace minimidi {
 namespace container {
 
 typedef std::vector <uint8_t> Bytes;
+typedef ankerl::svector<uint8_t, 7> SmallBytes;
 typedef std::span<const uint8_t> ByteSpan;
 
 inline void check_span_boundary(const ByteSpan &data, size_t index) {
     if (index >= data.size())
         throw std::out_of_range("Span index is out of range!");
 }
+
+// to_string func for SmallBytes
+inline std::string to_string(const SmallBytes &data) {
+    // show in hex
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0') << "{ ";
+    for (auto &d: data)
+        ss << std::setw(2) << (int) d << " ";
+    ss << "}" << std::dec;
+    return ss.str();
+};
 
 }
 
@@ -246,7 +259,7 @@ public:
 class Message {
 protected:
     uint32_t time;
-    container::Bytes data;
+    container::SmallBytes data;
     MessageType msgType;
 
     Message(uint32_t time, const MessageType &type) {
@@ -261,14 +274,14 @@ public:
         this->time = time;
         this->msgType = status_to_message_type(msgData[0]);
 
-        this->data = container::Bytes(msgData.begin(), msgData.end());
+        this->data = container::SmallBytes(msgData.begin(), msgData.end());
     };
 
-    Message(uint32_t time, const container::Bytes &msgData) {
+    Message(uint32_t time, const container::SmallBytes &msgData) {
         this->time = time;
         this->msgType = status_to_message_type(msgData[0]);
 
-        this->data = container::Bytes(msgData);
+        this->data = container::SmallBytes(msgData);
     };
 
     /*
@@ -291,7 +304,7 @@ public:
         if (!(type == MessageType::Meta &
               metaType == MetaType::EndOfTrack))
             throw std::invalid_argument("The argument combination should be these message type.");
-        this->data = container::Bytes(3);
+        this->data = container::SmallBytes (3);
         this->data[0] = uint8_t(type);
         this->data[1] = uint8_t(metaType);
         this->data[2] = 0x00;
@@ -301,7 +314,7 @@ public:
         return this->time;
     };
 
-    inline container::Bytes get_data() const {
+    inline container::SmallBytes get_data() const {
         return this->data;
     };
 
@@ -345,8 +358,8 @@ public:
         return meta_type_to_string(this->get_meta_type());
     }
 
-    inline container::Bytes get_meta_value() const {
-        return container::Bytes(this->data.begin() + 3, this->data.end());
+    inline container::SmallBytes get_meta_value() const {
+        return {this->data.begin() + 3, this->data.end()};
     };
 
     inline uint32_t get_tempo() const {
@@ -405,17 +418,17 @@ std::ostream &operator<<(std::ostream &out, const Message &message) {
             out << "(" << message.get_meta_type_string() << ") ";
             switch (message.get_meta_type()) {
                 case (message::MetaType::TrackName): {
-                    container::Bytes data = message.get_meta_value();
+                    auto data = message.get_meta_value();
                     out << std::string(data.begin(), data.end());
                     break;
                 };
                 case (message::MetaType::InstrumentName): {
-                    container::Bytes data = message.get_meta_value();
+                    auto data = message.get_meta_value();
                     out << std::string(data.begin(), data.end());
                     break;
                 };
                 case (message::MetaType::TimeSignature): {
-                    message::TimeSignature timeSig = message.get_time_signature();
+                    auto timeSig = message.get_time_signature();
                     out << (int) timeSig.numerator << "/" << (int) timeSig.denominator;
                     break;
                 };
@@ -431,8 +444,8 @@ std::ostream &operator<<(std::ostream &out, const Message &message) {
                     break;
                 }
                 default: {
-                    container::Bytes data = message.get_meta_value();
-                    out << (int) message.get_meta_type() << " value=" << message.get_data();
+                    auto data = message.get_meta_value();
+                    out << (int) message.get_meta_type() << " value=" << container::to_string(message.get_data());
                     // utils::print_bytes(message.get_data());
                     break;
                 }
@@ -486,7 +499,7 @@ public:
 
             // Running status
             if (data[cursor] < 0x80) {
-                container::Bytes msgData = container::Bytes(prevEventLen);
+                auto msgData = container::SmallBytes(prevEventLen);
                 container::check_span_boundary(data, cursor + prevEventLen - 1);
                 container::ByteSpan msgSpan = data.subspan(cursor, prevEventLen - 1);
                 cursor += prevEventLen - 1;
