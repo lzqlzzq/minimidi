@@ -124,8 +124,8 @@ namespace message {
     MIDI_META_TYPE_MEMBER(SequencerSpecificMeta, 0x7F)    \
     MIDI_META_TYPE_MEMBER(Unknown, 0xFF)    \
 
-#define MIN_PITCHBEND -8192
-#define MAX_PITCHBEND 8191
+const int16_t MIN_PITCHBEND = -8192;
+const int16_t MAX_PITCHBEND = 8191;
 
 
 enum class MessageType {
