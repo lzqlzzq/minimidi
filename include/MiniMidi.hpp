@@ -64,9 +64,9 @@ inline uint64_t read_msb_bytes(const uint8_t *buffer, size_t length) {
     return res;
 };
 
-inline container::Bytes make_variable_length(uint32_t num) {
+inline container::SmallBytes make_variable_length(uint32_t num) {
     uint8_t byteNum = ceil(log2(num + 1) / 7);
-    container::Bytes result(byteNum);
+    container::SmallBytes result(byteNum);
 
     for(auto i = 0; i < byteNum; i++) {
         result[i] = (num >> (7 * (byteNum - i - 1)));
