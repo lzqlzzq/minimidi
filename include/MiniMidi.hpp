@@ -124,8 +124,8 @@ namespace message {
     MIDI_META_TYPE_MEMBER(SequencerSpecificMeta, 0x7F)    \
     MIDI_META_TYPE_MEMBER(Unknown, 0xFF)    \
 
-#define MIN_PITCHWHEEL -8192
-#define MAX_PITCHWHEEL 8191
+#define MIN_PITCHBEND -8192
+#define MAX_PITCHBEND 8191
 
 
 enum class MessageType {
@@ -294,8 +294,8 @@ public:
         return Message(time, std::move(data));
     };
 
-    static Message PitchWheel(uint32_t time, uint8_t channel, int16_t value ) {
-        value -= MIN_PITCHWHEEL; // MIN_PITCHWHEEL = -8192; MAX_PITCHWHEEL = 8191
+    static Message PitchBend(uint32_t time, uint8_t channel, int16_t value ) {
+        value -= MIN_PITCHBEND;
         container::SmallBytes data = { 
             // 0xE0 | channel, 
             static_cast<uint8_t>(message_attr(MessageType::PitchBend).status | channel),
@@ -482,8 +482,8 @@ public:
         return {static_cast<int8_t>(data[3]), data[4]};
     }
 
-    [[nodiscard]] inline int16_t get_pitch_wheel() const {
-        return static_cast<int16_t>(data[1] | (data[2] << 7)) + MIN_PITCHWHEEL;
+    [[nodiscard]] inline int16_t get_pitch_bend() const {
+        return static_cast<int16_t>(data[1] | (data[2] << 7)) + MIN_PITCHBEND;
     };
 
     [[nodiscard]] inline uint16_t get_song_position_pointer() const {
