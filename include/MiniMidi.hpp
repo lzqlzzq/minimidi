@@ -79,6 +79,7 @@ namespace message {
     MIDI_MESSAGE_TYPE_MEMBER(ChannelAfterTouch, 0xD0, 2)       \
     MIDI_MESSAGE_TYPE_MEMBER(PitchBend, 0xE0, 3)               \
     MIDI_MESSAGE_TYPE_MEMBER(SysExStart, 0xF0, 65535)          \
+    MIDI_MESSAGE_TYPE_MEMBER(QuarterFrame, 0xF1, 2)            \
     MIDI_MESSAGE_TYPE_MEMBER(SongPositionPointer, 0xF2, 3)     \
     MIDI_MESSAGE_TYPE_MEMBER(SongSelect, 0xF3, 2)              \
     MIDI_MESSAGE_TYPE_MEMBER(TuneRequest, 0xF6, 1)             \
@@ -108,6 +109,9 @@ namespace message {
     MIDI_META_TYPE_MEMBER(KeySignature, 0x59)             \
     MIDI_META_TYPE_MEMBER(SequencerSpecificMeta, 0x7F)    \
     MIDI_META_TYPE_MEMBER(Unknown, 0xFF)    \
+
+#define MIN_PITCHWHEEL -8192
+#define MAX_PITCHWHEEL 8191
 
 
 enum class MessageType {
@@ -232,6 +236,177 @@ public:
         this->data = std::move(data);
     };
 
+    static Message NoteOn(uint32_t time, uint8_t channel, uint8_t pitch, uint8_t velocity) {
+        container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::NoteOn).status | channel), pitch, velocity};
+        return Message(time, std::move(data));
+    };
+
+    static Message NoteOff(uint32_t time, uint8_t channel, uint8_t pitch, uint8_t velocity) {
+        // container::SmallBytes data = { 0x80 | channel, pitch, velocity};
+        container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::NoteOff).status | channel), pitch, velocity};
+        return Message(time, std::move(data));
+    };
+
+    static Message ControlChange(uint32_t time, uint8_t channel, uint8_t controlNumber, uint8_t controlValue) {
+        // container::SmallBytes data = { 0xB0 | channel, controlNumber, controlValue};
+        container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::ControlChange).status | channel), controlNumber, controlValue};
+        return Message(time, std::move(data));
+    };
+
+    static Message ProgramChange(uint32_t time, uint8_t channel, uint8_t program) {
+        // container::SmallBytes data = { 0xC0 | channel, program};
+        container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::ProgramChange).status | channel), program};
+        return Message(time, std::move(data));
+    };
+
+    static Message SysEx(uint32_t time, const container::SmallBytes &data) {
+        container::SmallBytes buffer(data.size() + 2);
+        buffer[0] = message_attr(MessageType::SysExStart).status; //0xF0;
+        std::copy(data.begin(), data.end(), buffer.begin() + 1);
+        buffer[buffer.size() - 1] = message_attr(MessageType::SysExEnd).status; //0xF7;
+        return Message(time, std::move(buffer));
+    };
+
+    static Message SongPositionPointer(uint32_t time, uint16_t position) {
+        // the type of position is uint14_t
+        container::SmallBytes data = { 
+            message_attr(MessageType::SongPositionPointer).status, 
+            static_cast<uint8_t>(position & 0x7F), 
+            static_cast<uint8_t>(position >> 7)
+        };
+        return Message(time, std::move(data));
+    };
+
+    static Message PitchWheel(uint32_t time, uint8_t channel, int16_t value ) {
+        value -= MIN_PITCHWHEEL; // MIN_PITCHWHEEL = -8192; MAX_PITCHWHEEL = 8191
+        container::SmallBytes data = { 
+            // 0xE0 | channel, 
+            static_cast<uint8_t>(message_attr(MessageType::PitchBend).status | channel),
+            static_cast<uint8_t>(value & 0x7F), 
+            static_cast<uint8_t>(value >> 7)
+        };
+        return Message(time, std::move(data));
+    };
+
+    static Message QuarterFrame(uint32_t time, uint8_t type, uint8_t value) {
+        container::SmallBytes data = { 
+            static_cast<uint8_t>(message_attr(MessageType::QuarterFrame).status),
+            static_cast<uint8_t>((type << 4) | value )
+        };
+        return Message(time, std::move(data));
+    };
+
+    static Message Meta(uint32_t time, MetaType metaType, const container::SmallBytes &metaValue) {
+        container::SmallBytes data(metaValue.size() + 3);
+        data[0] = message_attr(MessageType::Meta).status; //0xFF;
+        data[1] = static_cast<uint8_t>(metaType);
+        data[2] = static_cast<uint8_t>(metaValue.size());
+        std::copy(metaValue.begin(), metaValue.end(), data.begin() + 3);
+        return Message(time, std::move(data));
+    };
+
+    inline static Message Meta(uint32_t time, MetaType metaType, const std::string &metaValue) {
+        container::SmallBytes data(metaValue.size() + 3);
+        data[0] = message_attr(MessageType::Meta).status; //0xFF;
+        data[1] = static_cast<uint8_t>(metaType);
+        data[2] = static_cast<uint8_t>(metaValue.size());
+        std::copy(metaValue.begin(), metaValue.end(), data.begin() + 3);
+        return Message(time, std::move(data));
+    };
+
+    static Message Text(uint32_t time, const std::string &text) {
+        return Meta(time, MetaType::Text, text);
+    };
+
+    static Message TrackName(uint32_t time, const std::string &name) {
+        return Meta(time, MetaType::TrackName, name);
+    };
+
+    static Message InstrumentName(uint32_t time, const std::string &name) {
+        return Meta(time, MetaType::InstrumentName, name);
+    };
+
+    static Message Lyric(uint32_t time, const std::string &lyric) {
+        return Meta(time, MetaType::Lyric, lyric);
+    };
+
+    static Message Marker(uint32_t time, const std::string &marker) {
+        return Meta(time, MetaType::Marker, marker);
+    };
+
+    static Message CuePoint(uint32_t time, const std::string &cuePoint) {
+        return Meta(time, MetaType::CuePoint, cuePoint);
+    };
+
+    static Message MIDIChannelPrefix(uint32_t time, uint8_t channel) {
+        container::SmallBytes data = { 
+            message_attr(MessageType::Meta).status, //0xFF, 
+            static_cast<uint8_t>(message::MetaType::MIDIChannelPrefix), //0x20, 
+            static_cast<uint8_t>(1), 
+            channel
+        };
+        return Message(time, std::move(data));
+    };
+
+    static Message EndOfTrack(uint32_t time) {
+        container::SmallBytes data = { 
+            message_attr(MessageType::Meta).status, //0xFF, 
+            static_cast<uint8_t>(message::MetaType::EndOfTrack), //0x2F, 
+            static_cast<uint8_t>(0)
+        };
+        return Message(time, std::move(data));
+    };
+
+    static Message SetTempo(uint32_t time, uint32_t tempo) {
+        container::SmallBytes data = { 
+            message_attr(MessageType::Meta).status, //0xFF, 
+            static_cast<uint8_t>(message::MetaType::SetTempo), //0x51, 
+            static_cast<uint8_t>(3), 
+            static_cast<uint8_t>((tempo >> 16) & 0xFF), 
+            static_cast<uint8_t>((tempo >> 8) & 0xFF), 
+            static_cast<uint8_t>(tempo & 0xFF)
+        };
+        return Message(time, std::move(data));
+    };
+
+    static Message SMPTEOffset(uint32_t time, uint8_t hour, uint8_t minute, uint8_t second, uint8_t frame, uint8_t subframe) {
+        container::SmallBytes data = { 
+            message_attr(MessageType::Meta).status, //0xFF, 
+            static_cast<uint8_t>(message::MetaType::SMPTEOffset), //0x54, 
+            static_cast<uint8_t>(5), 
+            hour, 
+            minute, 
+            second, 
+            frame, 
+            subframe
+        };
+        return Message(time, std::move(data));
+    };
+
+    static Message TimeSignature(uint32_t time, uint8_t numerator, uint8_t denominator) {
+        container::SmallBytes data = { 
+            message_attr(MessageType::Meta).status, //0xFF, 
+            static_cast<uint8_t>(message::MetaType::TimeSignature), //0x58, 
+            static_cast<uint8_t>(4), 
+            numerator, 
+            static_cast<uint8_t>(denominator), 
+            static_cast<uint8_t>(0x18), 
+            static_cast<uint8_t>(0x08)
+        };
+        return Message(time, std::move(data));
+    };
+
+    static Message KeySignature(uint32_t time, int8_t key, uint8_t tonality) {
+        container::SmallBytes data = { 
+            message_attr(MessageType::Meta).status, //0xFF, 
+            static_cast<uint8_t>(message::MetaType::KeySignature), //0x59, 
+            static_cast<uint8_t>(2), 
+            static_cast<uint8_t>(key), 
+            tonality
+        };
+        return Message(time, std::move(data));
+    };
+
     [[nodiscard]] inline uint32_t get_time() const { return time; };
 
     [[nodiscard]] inline const container::SmallBytes &get_data() const { return data; };
@@ -272,17 +447,33 @@ public:
         return utils::read_msb_bytes(const_cast<uint8_t *>(this->data.data()) + 3, 3);
     };
 
-    [[nodiscard]] inline TimeSignature get_time_signature() const {
+    [[nodiscard]] inline message::TimeSignature get_time_signature() const {
         // Clang-Tidy: Avoid repeating the return type from the declaration;
         // use a braced initializer list instead
         return {data[3], static_cast<uint8_t>(1 << data[4])};
     };
 
-    [[nodiscard]] inline KeySignature get_key_signature() const {
+    [[nodiscard]] inline message::KeySignature get_key_signature() const {
         // Clang-Tidy: Avoid repeating the return type from the declaration;
         // use a braced initializer list instead
         return {static_cast<int8_t>(data[3]), data[4]};
     }
+
+    [[nodiscard]] inline int16_t get_pitch_wheel() const {
+        return static_cast<int16_t>(data[1] | (data[2] << 7)) + MIN_PITCHWHEEL;
+    };
+
+    [[nodiscard]] inline uint16_t get_song_position_pointer() const {
+        return static_cast<uint16_t>(data[1] | (data[2] << 7));
+    };
+
+    [[nodiscard]] inline uint8_t get_frame_type() const {
+        return data[1] >> 4;
+    };
+
+    [[nodiscard]] inline uint8_t get_frame_value() const {
+        return data[1] & 0x0F;
+    };
 
 };
 
