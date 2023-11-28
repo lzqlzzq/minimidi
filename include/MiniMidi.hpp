@@ -915,7 +915,7 @@ public:
         container::Bytes midiBytes = this->to_bytes();
         fwrite(midiBytes.data(), 1, midiBytes.size(), filePtr);
         fclose(filePtr);
-    }
+    };
 
     [[nodiscard]] inline MidiFormat get_format() const {
         return this->format;
