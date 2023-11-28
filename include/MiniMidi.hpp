@@ -13,6 +13,7 @@
 #include<iomanip>
 #include<exception>
 #include<cstring>
+#include<numeric>
 #include"svector.h"
 
 namespace minimidi {
@@ -61,6 +62,19 @@ inline uint64_t read_msb_bytes(const uint8_t *buffer, size_t length) {
     }
 
     return res;
+};
+
+inline container::Bytes make_variable_length(uint32_t num) {
+    uint8_t byteNum = ceil(log2(num + 1) / 7);
+    container::Bytes result(byteNum);
+
+    for(auto i = 0; i < byteNum; i++) {
+        result[i] = (num >> (7 * (byteNum - i - 1)));
+        result[i] |= 0x80;
+    }
+    result.back() &= 0x7F;
+
+    return result;
 };
 
 }
@@ -260,9 +274,12 @@ public:
     };
 
     static Message SysEx(uint32_t time, const container::SmallBytes &data) {
-        container::SmallBytes buffer(data.size() + 2);
+        container::SmallBytes lenBytes = utils::make_variable_length(data.size());
+        container::SmallBytes buffer(data.size() + lenBytes.size() + 2);
+
         buffer[0] = message_attr(MessageType::SysExStart).status; //0xF0;
-        std::copy(data.begin(), data.end(), buffer.begin() + 1);
+        std::copy(lenBytes.begin(), lenBytes.end(), buffer.begin() + 1);
+        std::copy(data.begin(), data.end(), buffer.begin() + 1 + lenBytes.size());
         buffer[buffer.size() - 1] = message_attr(MessageType::SysExEnd).status; //0xF7;
         return Message(time, std::move(buffer));
     };
@@ -297,20 +314,26 @@ public:
     };
 
     static Message Meta(uint32_t time, MetaType metaType, const container::SmallBytes &metaValue) {
-        container::SmallBytes data(metaValue.size() + 3);
+        container::SmallBytes lenBytes = utils::make_variable_length(metaValue.size());
+        container::SmallBytes data(metaValue.size() + lenBytes.size() + 2);
+
         data[0] = message_attr(MessageType::Meta).status; //0xFF;
         data[1] = static_cast<uint8_t>(metaType);
-        data[2] = static_cast<uint8_t>(metaValue.size());
-        std::copy(metaValue.begin(), metaValue.end(), data.begin() + 3);
+        std::copy(lenBytes.begin(), lenBytes.end(), data.begin() + 2);
+        std::copy(metaValue.begin(), metaValue.end(), data.begin() + 2 + lenBytes.size());
+
         return Message(time, std::move(data));
     };
 
     inline static Message Meta(uint32_t time, MetaType metaType, const std::string &metaValue) {
-        container::SmallBytes data(metaValue.size() + 3);
+        container::SmallBytes lenBytes = utils::make_variable_length(metaValue.size());
+        container::SmallBytes data(metaValue.size() + lenBytes.size() + 2);
+
         data[0] = message_attr(MessageType::Meta).status; //0xFF;
         data[1] = static_cast<uint8_t>(metaType);
-        data[2] = static_cast<uint8_t>(metaValue.size());
-        std::copy(metaValue.begin(), metaValue.end(), data.begin() + 3);
+        std::copy(lenBytes.begin(), lenBytes.end(), data.begin() + 2);
+        std::copy(metaValue.begin(), metaValue.end(), data.begin() + 2 + lenBytes.size());
+
         return Message(time, std::move(data));
     };
 
@@ -598,7 +621,7 @@ public:
                 std::copy(cursor, cursor + prevEventLen - 1, messageData.begin() + 1);
                 cursor += prevEventLen - 1;
             }
-                // Meta message
+            // Meta message
             else if ((*cursor) == 0xFF) {
                 prevStatusCode = (*cursor);
                 uint8_t *prevBuffer = cursor;
@@ -611,7 +634,7 @@ public:
                 messageData = container::SmallBytes(prevBuffer, prevBuffer + prevEventLen);
                 cursor += prevEventLen - (cursor - prevBuffer);
             }
-                // SysEx message
+            // SysEx message
             else if ((*cursor) == 0xF0) {
                 prevStatusCode = (*cursor);
                 uint8_t *prevBuffer = cursor;
@@ -624,7 +647,7 @@ public:
                 messageData = container::SmallBytes(prevBuffer, prevBuffer + prevEventLen);
                 cursor += prevEventLen - (cursor - prevBuffer);
             }
-                // Channel message or system common message
+            // Channel message or system common message
             else {
                 prevStatusCode = (*cursor);
                 prevEventLen = message::message_attr(message::status_to_message_type(*cursor)).length;
