@@ -14,7 +14,6 @@ And `C++17` standard is compulsory.
 
 # TODO
 * Offer a MIDI serializing API supporting most of the message types.
-* Implement small vector optimization.
 * Better exception handling.
 
 # Acknowledgement
