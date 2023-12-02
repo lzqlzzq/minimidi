@@ -853,8 +853,6 @@ public:
             }
 
             size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
-            std::cout << (size_t)cursor << std::endl;
-            std::cout << (size_t)bufferEnd << std::endl;
 
             if (cursor + chunkLen + 8 > bufferEnd)
                 throw std::ios_base::failure("Unexpected EOF in file!");
