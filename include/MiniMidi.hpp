@@ -1,9 +1,6 @@
 #ifndef __MINIMIDI_HPP
 #define __MINIMIDI_HPP
 
-// used for ignoring warning C4996 (MSCV): 'fopen' was declared deprecated
-#define _CRT_SECURE_NO_DEPRECATE
-
 #include<cstdint>
 #include<cstddef>
 #include<utility>
@@ -512,8 +509,7 @@ public:
 
 };
 
-// Here inline is used to avoid obeying the one definition rule (ODR).
-inline std::ostream &operator<<(std::ostream &out, const container::Bytes &data) {
+std::ostream &operator<<(std::ostream &out, const container::Bytes &data) {
     out << std::hex << std::setfill('0') << "{ ";
     for (auto &d: data) {
         out << "0x" << std::setw(2) << (int) d << " ";
@@ -523,7 +519,7 @@ inline std::ostream &operator<<(std::ostream &out, const container::Bytes &data)
     return out;
 };
 
-inline std::ostream &operator<<(std::ostream &out, const Message &message) {
+std::ostream &operator<<(std::ostream &out, const Message &message) {
     out << "time=" << message.get_time() << " | [";
     out << message.get_type_string() << "] ";
 
@@ -597,7 +593,7 @@ inline std::ostream &operator<<(std::ostream &out, const Message &message) {
 
 typedef std::vector<message::Message> Messages;
 
-inline Messages filter_message(const Messages& messages, const std::function<bool(const Message &)> &filter) {
+Messages filter_message(const Messages& messages, const std::function<bool(const Message &)> &filter) {
     message::Messages new_messages;
     new_messages.reserve(messages.size());
     std::copy_if(messages.begin(),
@@ -764,7 +760,7 @@ public:
     };
 };
 
-inline std::ostream &operator<<(std::ostream &out, Track &track) {
+std::ostream &operator<<(std::ostream &out, Track &track) {
     for (int j = 0; j < track.message_num(); ++j) {
         out << track.message(j) << std::endl;
     }
@@ -837,7 +833,7 @@ public:
         auto *cursor = const_cast<uint8_t *>(data.data());
         uint8_t *bufferEnd = cursor + data.size();
 
-        if (!(!strncmp(reinterpret_cast<const char *>(cursor), MTHD.data(), 4) &&
+        if (!(std::string(reinterpret_cast<const char*>(cursor), 4).compare(MTHD) == 0 &&
               utils::read_msb_bytes(cursor + 4, 4) == 6
         ))
             throw std::ios_base::failure("Invaild midi file!");
@@ -851,12 +847,14 @@ public:
         tracks.reserve(trackNum);
         for (int i = 0; i < trackNum; ++i) {
             // Skip unknown chunk
-            while (!strncmp(reinterpret_cast<const char *>(cursor), track::MTRK.data(), 4)) {
+            while(std::string(reinterpret_cast<const char*>(cursor), 4).compare(track::MTRK) != 0) {
                 size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
                 cursor += (8 + chunkLen);
             }
 
             size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
+            std::cout << (size_t)cursor << std::endl;
+            std::cout << (size_t)bufferEnd << std::endl;
 
             if (cursor + chunkLen + 8 > bufferEnd)
                 throw std::ios_base::failure("Unexpected EOF in file!");
@@ -965,7 +963,7 @@ public:
 
 #undef MIDI_FORMAT
 
-inline std::ostream &operator<<(std::ostream &out, MidiFile &file) {
+std::ostream &operator<<(std::ostream &out, MidiFile &file) {
     out << "File format: " << file.get_format_string() << std::endl;
     out << "Division:\n" << "    Type: " << file.get_division_type() << std::endl;
     if (file.get_division_type()) {
