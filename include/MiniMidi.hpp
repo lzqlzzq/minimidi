@@ -1,6 +1,9 @@
 #ifndef __MINIMIDI_HPP
 #define __MINIMIDI_HPP
 
+// used for ignoring warning C4996 (MSCV): 'fopen' was declared deprecated
+#define _CRT_SECURE_NO_DEPRECATE
+
 #include<cstdint>
 #include<cstddef>
 #include<utility>
