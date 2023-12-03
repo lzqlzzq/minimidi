@@ -1,6 +1,9 @@
 #ifndef __MINIMIDI_HPP
 #define __MINIMIDI_HPP
 
+// used for ignoring warning C4996 (MSCV): 'fopen' was declared deprecated
+#define _CRT_SECURE_NO_DEPRECATE
+
 #include<cstdint>
 #include<cstddef>
 #include<utility>
@@ -509,7 +512,8 @@ public:
 
 };
 
-std::ostream &operator<<(std::ostream &out, const container::Bytes &data) {
+// Here inline is used to avoid obeying the one definition rule (ODR).
+inline std::ostream &operator<<(std::ostream &out, const container::Bytes &data) {
     out << std::hex << std::setfill('0') << "{ ";
     for (auto &d: data) {
         out << "0x" << std::setw(2) << (int) d << " ";
@@ -519,7 +523,7 @@ std::ostream &operator<<(std::ostream &out, const container::Bytes &data) {
     return out;
 };
 
-std::ostream &operator<<(std::ostream &out, const Message &message) {
+inline std::ostream &operator<<(std::ostream &out, const Message &message) {
     out << "time=" << message.get_time() << " | [";
     out << message.get_type_string() << "] ";
 
@@ -593,7 +597,7 @@ std::ostream &operator<<(std::ostream &out, const Message &message) {
 
 typedef std::vector<message::Message> Messages;
 
-Messages filter_message(const Messages& messages, const std::function<bool(const Message &)> &filter) {
+inline Messages filter_message(const Messages& messages, const std::function<bool(const Message &)> &filter) {
     message::Messages new_messages;
     new_messages.reserve(messages.size());
     std::copy_if(messages.begin(),
@@ -760,7 +764,7 @@ public:
     };
 };
 
-std::ostream &operator<<(std::ostream &out, Track &track) {
+inline std::ostream &operator<<(std::ostream &out, Track &track) {
     for (int j = 0; j < track.message_num(); ++j) {
         out << track.message(j) << std::endl;
     }
@@ -961,7 +965,7 @@ public:
 
 #undef MIDI_FORMAT
 
-std::ostream &operator<<(std::ostream &out, MidiFile &file) {
+inline std::ostream &operator<<(std::ostream &out, MidiFile &file) {
     out << "File format: " << file.get_format_string() << std::endl;
     out << "Division:\n" << "    Type: " << file.get_division_type() << std::endl;
     if (file.get_division_type()) {
