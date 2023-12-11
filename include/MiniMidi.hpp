@@ -620,10 +620,8 @@ namespace track {
 const std::string MTRK("MTrk");
 
 class Track {
-private:
-    message::Messages messages;
-
 public:
+    message::Messages messages;
     Track() = default;
 
     // explicit Track(const container::ByteSpan data) {
@@ -816,7 +814,7 @@ inline MidiFormat read_midiformat(uint16_t data) {
 };
 
 class MidiFile {
-private:
+public:
     MidiFormat format;
     uint16_t divisionType: 1;
     union {
@@ -830,7 +828,6 @@ private:
     };
     track::Tracks tracks;
 
-public:
     MidiFile() = default;
 
     explicit MidiFile(const container::Bytes &data) {
@@ -867,7 +864,15 @@ public:
             this->tracks.emplace_back(cursor + 8, chunkLen);
             cursor += (8 + chunkLen);
         }
-    }
+    };
+    
+    explicit MidiFile(MidiFormat format=MidiFormat::MultiTrack,
+                    uint8_t divisionType=0,
+                    uint16_t ticksPerQuarter=960) {
+        this->format = format;
+        this->divisionType = divisionType;
+        this->ticksPerQuarter = ticksPerQuarter;
+    };
 
     static MidiFile from_file(const std::string &filepath) {
         FILE *filePtr = fopen(filepath.c_str(), "rb");
