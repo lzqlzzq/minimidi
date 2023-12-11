@@ -439,7 +439,7 @@ public:
             static_cast<uint8_t>(message::MetaType::TimeSignature), //0x58, 
             static_cast<uint8_t>(4), 
             numerator, 
-            static_cast<uint8_t>(denominator), 
+            static_cast<uint8_t>(std::log2(denominator)),
             static_cast<uint8_t>(0x18), 
             static_cast<uint8_t>(0x08)
         };
