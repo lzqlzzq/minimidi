@@ -43,6 +43,17 @@ inline std::string to_string(const SmallBytes &data) {
 
 }
 
+// Here inline is used to avoid obeying the one definition rule (ODR).
+inline std::ostream &operator<<(std::ostream &out, const container::Bytes &data) {
+    out << std::hex << std::setfill('0') << "{ ";
+    for (auto &d: data) {
+        out << "0x" << std::setw(2) << (int) d << " ";
+    }
+    out << "}" << std::dec << std::endl;
+
+    return out;
+};
+
 namespace utils {
 
 inline uint32_t read_variable_length(uint8_t *&buffer) {
@@ -71,13 +82,14 @@ inline uint64_t read_msb_bytes(const uint8_t *buffer, size_t length) {
 
 inline void write_msb_bytes(uint8_t *buffer, size_t value, size_t length) {
     for (auto i = 1; i <= length; ++i) {
-        *buffer = static_cast<uint8_t>((value >> (length - i)) & 0xFF);
+        *buffer = static_cast<uint8_t>((value >> ((length - i) * 8)) & 0xFF);
         ++buffer;
     }
 }
 
 inline container::SmallBytes make_variable_length(uint32_t num) {
     uint8_t byteNum = ceil(log2(num + 1) / 7);
+    byteNum = byteNum ? byteNum : 1;
     container::SmallBytes result(byteNum);
 
     for(auto i = 0; i < byteNum; ++i) {
@@ -515,17 +527,6 @@ public:
 
 };
 
-// Here inline is used to avoid obeying the one definition rule (ODR).
-inline std::ostream &operator<<(std::ostream &out, const container::Bytes &data) {
-    out << std::hex << std::setfill('0') << "{ ";
-    for (auto &d: data) {
-        out << "0x" << std::setw(2) << (int) d << " ";
-    }
-    out << "}" << std::dec << std::endl;
-
-    return out;
-};
-
 inline std::ostream &operator<<(std::ostream &out, const Message &message) {
     out << "time=" << message.get_time() << " | [";
     out << message.get_type_string() << "] ";
@@ -716,8 +717,8 @@ public:
         message::Messages messages_to_bytes = message::filter_message(
             this->messages,
             [](const message::Message& msg) {
-                    return !(msg.get_type() != message::MessageType::Meta && \
-                            msg.get_meta_type() != message::MetaType::EndOfTrack);
+                    return msg.get_type() != message::MessageType::Meta ||
+                        msg.get_meta_type() != message::MetaType::EndOfTrack;
             });
 
         std::sort(messages_to_bytes.begin(),
@@ -725,7 +726,7 @@ public:
                 [](const message::Message& msg1, const message::Message& msg2){
             return msg1.get_time() < msg2.get_time();
         });
-        messages_to_bytes.emplace_back(message::Message::EndOfTrack(messages_to_bytes.back().get_time()));
+        messages_to_bytes.emplace_back(message::Message::EndOfTrack(messages_to_bytes.back().get_time() + 1));
 
         std::vector<uint32_t> times(messages_to_bytes.size());
         std::vector<size_t> dataLen(messages_to_bytes.size());
@@ -735,8 +736,8 @@ public:
         }
         std::adjacent_difference(times.begin(), times.end(), times.begin());
 
-        container::Bytes trackBytes;
-        trackBytes.reserve(std::reduce(dataLen.begin(), dataLen.end()) + 4 * messages_to_bytes.size() + 8);
+        container::Bytes trackBytes(std::reduce(dataLen.begin(), dataLen.end()) + 4 * messages_to_bytes.size() + 8);
+
         std::copy(MTRK.begin(), MTRK.end(), trackBytes.begin());
         size_t cursor = 8;
         uint8_t lastEventStatus = 0x00;
@@ -746,8 +747,8 @@ public:
             cursor += timeData.size();
 
             // Running status
-            if((messages_to_bytes[i].get_data()[0] != 0xFF ||
-                messages_to_bytes[i].get_data()[0] != 0xF7) &&
+            if(!(messages_to_bytes[i].get_data()[0] == 0xFF ||
+                messages_to_bytes[i].get_data()[0] == 0xF7) &&
                 messages_to_bytes[i].get_data()[0] == lastEventStatus) {
                 std::copy(messages_to_bytes[i].get_data().begin() + 1, messages_to_bytes[i].get_data().end(), trackBytes.begin() + cursor);
                 cursor += messages_to_bytes[i].get_data().size() - 1;
@@ -756,11 +757,13 @@ public:
                 std::copy(messages_to_bytes[i].get_data().begin(), messages_to_bytes[i].get_data().end(), trackBytes.begin() + cursor);
                 cursor += messages_to_bytes[i].get_data().size();
             }
+            lastEventStatus = messages_to_bytes[i].get_data()[0];
         }
         utils::write_msb_bytes(trackBytes.data() + 4, cursor - 8, 4);
 
         trackBytes.resize(cursor);
         trackBytes.shrink_to_fit();
+
         return trackBytes;
     };
 };
@@ -828,7 +831,7 @@ public:
     };
     track::Tracks tracks;
 
-    MidiFile() = default;
+    // MidiFile() = default;
 
     explicit MidiFile(const container::Bytes &data) {
         if (data.size() < 4)
@@ -899,8 +902,7 @@ public:
             trackByteNum += trackBytes[i].size();
         }
 
-        container::Bytes midiBytes;
-        midiBytes.reserve(trackByteNum + 14);
+        container::Bytes midiBytes(trackByteNum + 14);
 
         // Write head
         std::copy(MTHD.begin(), MTHD.end(), midiBytes.begin());
