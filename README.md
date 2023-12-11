@@ -6,6 +6,8 @@ see `example/`
 ```
   parsemidi.cpp: parse midi to readable stdout.
   dumpmidi.cpp: dump midi to readable txt file.
+  writemidi.cpp: write a constructed midi file.
+  redumpmidi.cpp: parse a midi file and write the identical midi file using serialization interface.
 ```
 
 # Compiling
@@ -13,7 +15,6 @@ No worry, Just copy the hpp into your project and include it!
 And `C++17` standard is compulsory.
 
 # TODO
-* Offer a MIDI serializing API supporting most of the message types.
 * Better exception handling.
 
 # Acknowledgement
