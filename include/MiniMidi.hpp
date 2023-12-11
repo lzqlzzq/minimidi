@@ -224,19 +224,23 @@ typedef struct {
     uint8_t denominator;
 } TimeSignature;
 
+const std::string KEYS_NAME[] = {"bC", "bG", "bD", "bA", "bE", "bB", "F", "C", "G",
+                                 "D", "A", "E", "B", "#F", "#C", "bc", "bg", "bd",
+                                 "ba", "be", "bb", "f", "c", "g", "d", "a", "e",
+                                 "b", "#f", "#c"};
+
 class KeySignature {
 public:
     int8_t key;
     uint8_t tonality;
 
-    inline std::string to_string() const {
-        static const std::string MINOR_KEYS[] = {"bc", "bg", "bd", "ba", "be", "bb", "f", "c", "g", "d", "a", "e", "b",
-                                                 "#f", "#c"};
-        static const std::string MAJOR_KEYS[] = {"bC", "bG", "bD", "bA", "bE", "bB", "F", "C", "G", "D", "A", "E", "B",
-                                                 "#F", "#C"};
+    KeySignature() = default;
+    KeySignature(int8_t key, uint8_t tonality): key(key), tonality(tonality) {};
 
-        return this->tonality ? MINOR_KEYS[this->key + 7] : MAJOR_KEYS[this->key + 7];
+    inline std::string to_string() const {
+        return KEYS_NAME[this->key + 7 + this->tonality * 12];
     };
+
 };
 
 class Message {
@@ -246,7 +250,6 @@ private:
     container::SmallBytes data;
 
 public:
-
     Message(uint32_t time, const container::SmallBytes &data) {
         this->time = time;
         this->msgType = status_to_message_type(data[0]);
