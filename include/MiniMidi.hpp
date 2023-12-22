@@ -713,7 +713,7 @@ public:
         return this->messages.size();
     };
 
-    inline container::Bytes to_bytes() {
+    inline container::Bytes to_bytes() const {
         message::Messages messages_to_bytes = message::filter_message(
             this->messages,
             [](const message::Message& msg) {
@@ -721,10 +721,10 @@ public:
                         msg.get_meta_type() != message::MetaType::EndOfTrack;
             });
 
-        std::sort(messages_to_bytes.begin(),
-                messages_to_bytes.end(),
-                [](const message::Message& msg1, const message::Message& msg2){
-            return msg1.get_time() < msg2.get_time();
+        std::stable_sort(messages_to_bytes.begin(),
+            messages_to_bytes.end(),
+            [](const message::Message& msg1, const message::Message& msg2) {
+                return msg1.get_time() <= msg2.get_time();
         });
         messages_to_bytes.emplace_back(message::Message::EndOfTrack(messages_to_bytes.back().get_time() + 1));
 
