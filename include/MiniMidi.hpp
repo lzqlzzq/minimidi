@@ -724,7 +724,7 @@ public:
         std::stable_sort(messages_to_bytes.begin(),
             messages_to_bytes.end(),
             [](const message::Message& msg1, const message::Message& msg2) {
-                return msg1.get_time() <= msg2.get_time();
+                return msg1.get_time() < msg2.get_time();
         });
         messages_to_bytes.emplace_back(message::Message::EndOfTrack(messages_to_bytes.back().get_time() + 1));
 
