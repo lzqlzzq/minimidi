@@ -1,19 +1,24 @@
 #ifndef __MINIMIDI_HPP
 #define __MINIMIDI_HPP
 
+// used for ignoring warning C4996 (MSCV): 'fopen' was declared deprecated
+#define _CRT_SECURE_NO_DEPRECATE
+
 #include<cstdint>
 #include<cstddef>
-#include <utility>
+#include<utility>
 #include<vector>
 #include<string>
 #include<cstdlib>
 #include<iostream>
 #include<string>
-#include <sstream>
+#include<sstream>
 #include<iomanip>
 #include<exception>
 #include<cstring>
 #include<numeric>
+#include<cmath>
+#include<functional>
 #include"svector.h"
 
 namespace minimidi {
@@ -38,12 +43,23 @@ inline std::string to_string(const SmallBytes &data) {
 
 }
 
+// Here inline is used to avoid obeying the one definition rule (ODR).
+inline std::ostream &operator<<(std::ostream &out, const container::Bytes &data) {
+    out << std::hex << std::setfill('0') << "{ ";
+    for (auto &d: data) {
+        out << "0x" << std::setw(2) << (int) d << " ";
+    }
+    out << "}" << std::dec << std::endl;
+
+    return out;
+};
+
 namespace utils {
 
 inline uint32_t read_variable_length(uint8_t *&buffer) {
     uint32_t value = 0;
 
-    for (auto i = 0; i < 4; i++) {
+    for (auto i = 0; i < 4; ++i) {
         value = (value << 7) + (*buffer & 0x7f);
         if (!(*buffer & 0x80)) break;
         buffer++;
@@ -56,7 +72,7 @@ inline uint32_t read_variable_length(uint8_t *&buffer) {
 inline uint64_t read_msb_bytes(const uint8_t *buffer, size_t length) {
     uint64_t res = 0;
 
-    for (auto i = 0; i < length; i++) {
+    for (auto i = 0; i < length; ++i) {
         res <<= 8;
         res += (*(buffer + i));
     }
@@ -64,11 +80,19 @@ inline uint64_t read_msb_bytes(const uint8_t *buffer, size_t length) {
     return res;
 };
 
+inline void write_msb_bytes(uint8_t *buffer, size_t value, size_t length) {
+    for (auto i = 1; i <= length; ++i) {
+        *buffer = static_cast<uint8_t>((value >> ((length - i) * 8)) & 0xFF);
+        ++buffer;
+    }
+}
+
 inline container::SmallBytes make_variable_length(uint32_t num) {
     uint8_t byteNum = ceil(log2(num + 1) / 7);
+    byteNum = byteNum ? byteNum : 1;
     container::SmallBytes result(byteNum);
 
-    for(auto i = 0; i < byteNum; i++) {
+    for(auto i = 0; i < byteNum; ++i) {
         result[i] = (num >> (7 * (byteNum - i - 1)));
         result[i] |= 0x80;
     }
@@ -215,19 +239,23 @@ typedef struct {
     uint8_t denominator;
 } TimeSignature;
 
+const std::string KEYS_NAME[] = {"bC", "bG", "bD", "bA", "bE", "bB", "F", "C", "G",
+                                 "D", "A", "E", "B", "#F", "#C", "bc", "bg", "bd",
+                                 "ba", "be", "bb", "f", "c", "g", "d", "a", "e",
+                                 "b", "#f", "#c"};
+
 class KeySignature {
 public:
     int8_t key;
     uint8_t tonality;
 
-    inline std::string to_string() const {
-        static const std::string MINOR_KEYS[] = {"bc", "bg", "bd", "ba", "be", "bb", "f", "c", "g", "d", "a", "e", "b",
-                                                 "#f", "#c"};
-        static const std::string MAJOR_KEYS[] = {"bC", "bG", "bD", "bA", "bE", "bB", "F", "C", "G", "D", "A", "E", "B",
-                                                 "#F", "#C"};
+    KeySignature() = default;
+    KeySignature(int8_t key, uint8_t tonality): key(key), tonality(tonality) {};
 
-        return this->tonality ? MINOR_KEYS[this->key + 7] : MAJOR_KEYS[this->key + 7];
+    inline std::string to_string() const {
+        return KEYS_NAME[this->key + 7 + this->tonality * 12];
     };
+
 };
 
 class Message {
@@ -237,7 +265,6 @@ private:
     container::SmallBytes data;
 
 public:
-
     Message(uint32_t time, const container::SmallBytes &data) {
         this->time = time;
         this->msgType = status_to_message_type(data[0]);
@@ -412,7 +439,7 @@ public:
             static_cast<uint8_t>(message::MetaType::TimeSignature), //0x58, 
             static_cast<uint8_t>(4), 
             numerator, 
-            static_cast<uint8_t>(denominator), 
+            static_cast<uint8_t>(std::log2(denominator)),
             static_cast<uint8_t>(0x18), 
             static_cast<uint8_t>(0x08)
         };
@@ -500,17 +527,7 @@ public:
 
 };
 
-std::ostream &operator<<(std::ostream &out, const container::Bytes &data) {
-    out << std::hex << std::setfill('0') << "{ ";
-    for (auto &d: data) {
-        out << "0x" << std::setw(2) << (int) d << " ";
-    }
-    out << "}" << std::dec << std::endl;
-
-    return out;
-};
-
-std::ostream &operator<<(std::ostream &out, const Message &message) {
+inline std::ostream &operator<<(std::ostream &out, const Message &message) {
     out << "time=" << message.get_time() << " | [";
     out << message.get_type_string() << "] ";
 
@@ -584,21 +601,33 @@ std::ostream &operator<<(std::ostream &out, const Message &message) {
 
 typedef std::vector<message::Message> Messages;
 
+inline Messages filter_message(const Messages& messages, const std::function<bool(const Message &)> &filter) {
+    message::Messages new_messages;
+    new_messages.reserve(messages.size());
+    std::copy_if(messages.begin(),
+                messages.end(),
+                std::back_inserter(new_messages),
+                filter);
+    message::Messages(new_messages).swap(new_messages);
+
+    return new_messages;
+};
+
 }
 
 
 namespace track {
 
-class Track {
-private:
-    message::Messages messages;
+const std::string MTRK("MTrk");
 
+class Track {
 public:
+    message::Messages messages;
     Track() = default;
 
     // explicit Track(const container::ByteSpan data) {
     Track(uint8_t *cursor, size_t size) {
-        messages.reserve(size/3 + 100);
+        messages.reserve(size / 3 + 100);
         // auto *cursor = const_cast<uint8_t *>(data.data());
         uint8_t *bufferEnd = cursor + size;
 
@@ -683,9 +712,63 @@ public:
     [[nodiscard]] inline size_t message_num() const {
         return this->messages.size();
     };
+
+    inline container::Bytes to_bytes() const {
+        message::Messages messages_to_bytes = message::filter_message(
+            this->messages,
+            [](const message::Message& msg) {
+                    return msg.get_type() != message::MessageType::Meta ||
+                        msg.get_meta_type() != message::MetaType::EndOfTrack;
+            });
+
+        std::stable_sort(messages_to_bytes.begin(),
+            messages_to_bytes.end(),
+            [](const message::Message& msg1, const message::Message& msg2) {
+                return msg1.get_time() < msg2.get_time();
+        });
+        messages_to_bytes.emplace_back(message::Message::EndOfTrack(messages_to_bytes.back().get_time() + 1));
+
+        std::vector<uint32_t> times(messages_to_bytes.size());
+        std::vector<size_t> dataLen(messages_to_bytes.size());
+        for(int i = 0; i < messages_to_bytes.size(); ++i) {
+            times[i] = messages_to_bytes[i].get_time();
+            dataLen[i] = messages_to_bytes[i].get_data().size();
+        }
+        std::adjacent_difference(times.begin(), times.end(), times.begin());
+
+        container::Bytes trackBytes(std::reduce(dataLen.begin(), dataLen.end()) + 4 * messages_to_bytes.size() + 8);
+
+        std::copy(MTRK.begin(), MTRK.end(), trackBytes.begin());
+        size_t cursor = 8;
+        uint8_t lastEventStatus = 0x00;
+        for(int i = 0; i < messages_to_bytes.size(); ++i) {
+            container::SmallBytes timeData = utils::make_variable_length(times[i]);
+            std::copy(timeData.begin(), timeData.end(), trackBytes.begin() + cursor);
+            cursor += timeData.size();
+
+            // Running status
+            if(!(messages_to_bytes[i].get_data()[0] == 0xFF ||
+                messages_to_bytes[i].get_data()[0] == 0xF7) &&
+                messages_to_bytes[i].get_data()[0] == lastEventStatus) {
+                std::copy(messages_to_bytes[i].get_data().begin() + 1, messages_to_bytes[i].get_data().end(), trackBytes.begin() + cursor);
+                cursor += messages_to_bytes[i].get_data().size() - 1;
+            }
+            else {
+                std::copy(messages_to_bytes[i].get_data().begin(), messages_to_bytes[i].get_data().end(), trackBytes.begin() + cursor);
+                cursor += messages_to_bytes[i].get_data().size();
+            }
+            lastEventStatus = messages_to_bytes[i].get_data()[0];
+        }
+        utils::write_msb_bytes(trackBytes.data() + 4, cursor - 8, 4);
+
+        trackBytes.resize(cursor);
+        trackBytes.shrink_to_fit();
+
+        return trackBytes;
+    };
 };
 
-std::ostream &operator<<(std::ostream &out, Track &track) {
+inline std::ostream &operator<<(std::ostream &out, Track &track) {
     for (int j = 0; j < track.message_num(); ++j) {
         out << track.message(j) << std::endl;
     }
@@ -699,6 +782,8 @@ typedef std::vector<Track> Tracks;
 
 
 namespace file {
+
+const std::string MTHD("MThd");
 
 #define MIDI_FORMAT                       \
     MIDI_FORMAT_MEMBER(SingleTrack, 0)    \
@@ -732,7 +817,7 @@ inline MidiFormat read_midiformat(uint16_t data) {
 };
 
 class MidiFile {
-private:
+public:
     MidiFormat format;
     uint16_t divisionType: 1;
     union {
@@ -746,8 +831,7 @@ private:
     };
     track::Tracks tracks;
 
-public:
-    MidiFile() = default;
+    // MidiFile() = default;
 
     explicit MidiFile(const container::Bytes &data) {
         if (data.size() < 4)
@@ -756,21 +840,21 @@ public:
         auto *cursor = const_cast<uint8_t *>(data.data());
         uint8_t *bufferEnd = cursor + data.size();
 
-        if (!(!strncmp(reinterpret_cast<const char *>(cursor), "MThd", 4) &&
+        if (!(std::string(reinterpret_cast<const char*>(cursor), 4).compare(MTHD) == 0 &&
               utils::read_msb_bytes(cursor + 4, 4) == 6
         ))
             throw std::ios_base::failure("Invaild midi file!");
 
         this->format = read_midiformat(utils::read_msb_bytes(cursor + 8, 2));
         uint16_t trackNum = utils::read_msb_bytes(cursor + 10, 2);
-        this->divisionType = (*(cursor + 12)) & 0x80;
+        this->divisionType = ((*(cursor + 12)) & 0x80) >> 7;
         this->ticksPerQuarter = (((*(cursor + 12)) & 0x7F) << 8) + (*(cursor + 13));
 
         cursor += 14;
         tracks.reserve(trackNum);
         for (int i = 0; i < trackNum; ++i) {
             // Skip unknown chunk
-            while (!strncmp(reinterpret_cast<const char *>(cursor), "MThd", 4)) {
+            while(std::string(reinterpret_cast<const char*>(cursor), 4).compare(track::MTRK) != 0) {
                 size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
                 cursor += (8 + chunkLen);
             }
@@ -783,8 +867,15 @@ public:
             this->tracks.emplace_back(cursor + 8, chunkLen);
             cursor += (8 + chunkLen);
         }
-        tracks.shrink_to_fit();
-    }
+    };
+    
+    explicit MidiFile(MidiFormat format=MidiFormat::MultiTrack,
+                    uint8_t divisionType=0,
+                    uint16_t ticksPerQuarter=960) {
+        this->format = format;
+        this->divisionType = divisionType;
+        this->ticksPerQuarter = ticksPerQuarter;
+    };
 
     static MidiFile from_file(const std::string &filepath) {
         FILE *filePtr = fopen(filepath.c_str(), "rb");
@@ -801,6 +892,44 @@ public:
         fclose(filePtr);
 
         return MidiFile(data);
+    };
+
+    container::Bytes to_bytes() {
+        std::vector<container::Bytes> trackBytes(tracks.size());
+        size_t trackByteNum = 0;
+        for (auto i = 0; i < tracks.size(); ++i) {
+            trackBytes[i] = tracks[i].to_bytes();
+            trackByteNum += trackBytes[i].size();
+        }
+
+        container::Bytes midiBytes(trackByteNum + 14);
+
+        // Write head
+        std::copy(MTHD.begin(), MTHD.end(), midiBytes.begin());
+        midiBytes[7] = 0x06;  // Length of head
+        midiBytes[9] = static_cast<uint8_t>(format);
+        utils::write_msb_bytes(midiBytes.data() + 10, tracks.size(), 2);
+        utils::write_msb_bytes(midiBytes.data() + 12, (divisionType << 15) | ticksPerQuarter, 2);
+
+        // Write track
+        size_t cursor = 14;
+        for (const auto& thisTrackBytes: trackBytes) {
+            std::copy(thisTrackBytes.begin(), thisTrackBytes.end(), midiBytes.begin() + cursor);
+            cursor += thisTrackBytes.size();
+        }
+
+        return midiBytes;
+    };
+
+    void write_file(const std::string &filepath) {
+        FILE *filePtr = fopen(filepath.c_str(), "wb");
+
+        if (!filePtr)
+            throw std::ios_base::failure("Create file failed!");
+
+        container::Bytes midiBytes = this->to_bytes();
+        fwrite(midiBytes.data(), 1, midiBytes.size(), filePtr);
+        fclose(filePtr);
     };
 
     [[nodiscard]] inline MidiFormat get_format() const {
@@ -846,7 +975,7 @@ public:
 
 #undef MIDI_FORMAT
 
-std::ostream &operator<<(std::ostream &out, MidiFile &file) {
+inline std::ostream &operator<<(std::ostream &out, MidiFile &file) {
     out << "File format: " << file.get_format_string() << std::endl;
     out << "Division:\n" << "    Type: " << file.get_division_type() << std::endl;
     if (file.get_division_type()) {
