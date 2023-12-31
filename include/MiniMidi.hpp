@@ -14,11 +14,10 @@
 #include<string>
 #include<sstream>
 #include<iomanip>
-#include<exception>
-#include<cstring>
 #include<numeric>
 #include<cmath>
 #include<functional>
+#include<span>
 #include"svector.h"
 
 namespace minimidi {
@@ -26,6 +25,7 @@ namespace minimidi {
 namespace container {
 
 typedef std::vector<uint8_t> Bytes;
+typedef std::span<const uint8_t> ByteSpan;
 
 // size of SmallBytes is totally 8 bytes on the stack (7 bytes + 1 byte for size)
 typedef ankerl::svector<uint8_t, 7> SmallBytes;
@@ -833,7 +833,7 @@ public:
 
     // MidiFile() = default;
 
-    explicit MidiFile(const container::Bytes &data) {
+    explicit MidiFile(const container::ByteSpan data) {
         if (data.size() < 4)
             throw std::ios_base::failure("Invaild midi file!");
 
