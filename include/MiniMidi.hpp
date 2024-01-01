@@ -701,8 +701,6 @@ public:
                 message::status_to_message_type(prevStatusCode),
                 std::move(messageData));
         }
-
-        this->messages.shrink_to_fit();
     };
 
     explicit Track(message::Messages &&message) {
@@ -767,10 +765,10 @@ public:
             }
             lastEventStatus = messages_to_bytes[i].get_data()[0];
         }
+        // Write track chunk length
         utils::write_msb_bytes(trackBytes.data() + 4, cursor - 8, 4);
 
         trackBytes.resize(cursor);
-        trackBytes.shrink_to_fit();
 
         return trackBytes;
     };
