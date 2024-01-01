@@ -703,7 +703,11 @@ public:
         this->messages = std::vector(std::move(message));
     };
 
-    message::Message &message(uint32_t index) {
+    message::Message &message(const uint32_t index) {
+        return this->messages[index];
+    };
+
+    [[nodiscard]] const message::Message &message(const uint32_t index) const {
         return this->messages[index];
     };
 
@@ -766,7 +770,7 @@ public:
     };
 };
 
-inline std::ostream &operator<<(std::ostream &out, Track &track) {
+inline std::ostream &operator<<(std::ostream &out, const Track &track) {
     for (int j = 0; j < track.message_num(); ++j) {
         out << track.message(j) << std::endl;
     }
@@ -963,7 +967,11 @@ public:
         };
     };
 
-    track::Track &track(uint32_t index) {
+    track::Track &track(const uint32_t index) {
+        return this->tracks[index];
+    };
+
+    [[nodiscard]] const track::Track &track(const uint32_t index) const {
         return this->tracks[index];
     };
 
@@ -974,7 +982,7 @@ public:
 
 #undef MIDI_FORMAT
 
-inline std::ostream &operator<<(std::ostream &out, MidiFile &file) {
+inline std::ostream &operator<<(std::ostream &out, const MidiFile &file) {
     out << "File format: " << file.get_format_string() << std::endl;
     out << "Division:\n" << "    Type: " << file.get_division_type() << std::endl;
     if (file.get_division_type()) {
