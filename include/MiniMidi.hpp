@@ -702,7 +702,7 @@ public:
                 std::move(messageData));
         }
 
-        message::Messages(this->messages).swap(this->messages);
+        this->messages.shrink_to_fit();
     };
 
     explicit Track(message::Messages &&message) {
