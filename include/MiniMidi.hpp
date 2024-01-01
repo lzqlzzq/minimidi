@@ -698,7 +698,7 @@ public:
                 break;
             }
         }
-        messages.shrink_to_fit();
+        message::Messages(this->messages).swap(this->messages);
     };
 
     explicit Track(message::Messages &&message) {
