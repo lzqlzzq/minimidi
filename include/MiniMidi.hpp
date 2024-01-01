@@ -1,8 +1,10 @@
-#ifndef __MINIMIDI_HPP
-#define __MINIMIDI_HPP
+#ifndef MINIMIDI_HPP
+#define MINIMIDI_HPP
 
 // used for ignoring warning C4996 (MSCV): 'fopen' was declared deprecated
-#define _CRT_SECURE_NO_DEPRECATE
+#ifdef _MSC_VER
+#pragma warning(disable:4996)
+#endif
 
 #include<cstdint>
 #include<cstddef>
@@ -14,8 +16,6 @@
 #include<string>
 #include<sstream>
 #include<iomanip>
-#include<exception>
-#include<cstring>
 #include<numeric>
 #include<cmath>
 #include<functional>
@@ -36,7 +36,7 @@ inline std::string to_string(const SmallBytes &data) {
     std::stringstream ss;
     ss << std::hex << std::setfill('0') << "{ ";
     for (auto &d: data)
-        ss << std::setw(2) << (int) d << " ";
+        ss << std::setw(2) << static_cast<int>(d) << " ";
     ss << "}" << std::dec;
     return ss.str();
 };
@@ -47,7 +47,7 @@ inline std::string to_string(const SmallBytes &data) {
 inline std::ostream &operator<<(std::ostream &out, const container::Bytes &data) {
     out << std::hex << std::setfill('0') << "{ ";
     for (auto &d: data) {
-        out << "0x" << std::setw(2) << (int) d << " ";
+        out << "0x" << std::setw(2) << static_cast<int>(d) << " ";
     }
     out << "}" << std::dec << std::endl;
 
@@ -56,7 +56,7 @@ inline std::ostream &operator<<(std::ostream &out, const container::Bytes &data)
 
 namespace utils {
 
-inline uint32_t read_variable_length(uint8_t *&buffer) {
+inline uint32_t read_variable_length(const uint8_t *&buffer) {
     uint32_t value = 0;
 
     for (auto i = 0; i < 4; ++i) {
@@ -148,8 +148,8 @@ namespace message {
     MIDI_META_TYPE_MEMBER(SequencerSpecificMeta, 0x7F)    \
     MIDI_META_TYPE_MEMBER(Unknown, 0xFF)    \
 
-const int16_t MIN_PITCHBEND = -8192;
-const int16_t MAX_PITCHBEND = 8191;
+constexpr int16_t MIN_PITCHBEND = -8192;
+constexpr int16_t MAX_PITCHBEND = 8191;
 
 
 enum class MessageType {
@@ -180,7 +180,7 @@ inline const MessageAttr &message_attr(const MessageType &messageType) {
         MIDI_MESSAGE_TYPE
 #undef MIDI_MESSAGE_TYPE_MEMBER
     };
-    return MESSAGE_ATTRS[static_cast<std::underlying_type<MessageType>::type>(messageType)];
+    return MESSAGE_ATTRS[static_cast<std::underlying_type_t<MessageType>>(messageType)];
 };
 
 inline MessageType status_to_message_type(uint8_t status) {
@@ -190,6 +190,7 @@ inline MessageType status_to_message_type(uint8_t status) {
                 case status: return MessageType::type;
             MIDI_MESSAGE_TYPE
 #undef MIDI_MESSAGE_TYPE_MEMBER
+            default: {} // add a empty default to avoid warning
         }
     } else {
         switch (status) {
@@ -197,9 +198,9 @@ inline MessageType status_to_message_type(uint8_t status) {
                 case status: return MessageType::type;
             MIDI_MESSAGE_TYPE
 #undef MIDI_MESSAGE_TYPE_MEMBER
+            default: {} // add a empty default to avoid warning
         }
     }
-
     return MessageType::Unknown;
 };
 
@@ -215,6 +216,7 @@ inline MetaType status_to_meta_type(uint8_t status) {
             case status: return MetaType::type;
         MIDI_META_TYPE
 #undef MIDI_META_TYPE_MEMBER
+        default: {} // add a empty default to avoid warning
     }
 
     return MetaType::Unknown;
@@ -252,14 +254,13 @@ public:
     KeySignature() = default;
     KeySignature(int8_t key, uint8_t tonality): key(key), tonality(tonality) {};
 
-    inline std::string to_string() const {
+    [[nodiscard]] std::string to_string() const {
         return KEYS_NAME[this->key + 7 + this->tonality * 12];
     };
 
 };
 
 class Message {
-private:
     uint32_t time;
     MessageType msgType;
     container::SmallBytes data;
@@ -279,25 +280,25 @@ public:
 
     static Message NoteOn(uint32_t time, uint8_t channel, uint8_t pitch, uint8_t velocity) {
         container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::NoteOn).status | channel), pitch, velocity};
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
     static Message NoteOff(uint32_t time, uint8_t channel, uint8_t pitch, uint8_t velocity) {
         // container::SmallBytes data = { 0x80 | channel, pitch, velocity};
         container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::NoteOff).status | channel), pitch, velocity};
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
     static Message ControlChange(uint32_t time, uint8_t channel, uint8_t controlNumber, uint8_t controlValue) {
         // container::SmallBytes data = { 0xB0 | channel, controlNumber, controlValue};
         container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::ControlChange).status | channel), controlNumber, controlValue};
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
     static Message ProgramChange(uint32_t time, uint8_t channel, uint8_t program) {
         // container::SmallBytes data = { 0xC0 | channel, program};
         container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::ProgramChange).status | channel), program};
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
     static Message SysEx(uint32_t time, const container::SmallBytes &data) {
@@ -308,7 +309,7 @@ public:
         std::copy(lenBytes.begin(), lenBytes.end(), buffer.begin() + 1);
         std::copy(data.begin(), data.end(), buffer.begin() + 1 + lenBytes.size());
         buffer[buffer.size() - 1] = message_attr(MessageType::SysExEnd).status; //0xF7;
-        return Message(time, std::move(buffer));
+        return {time, std::move(buffer)};
     };
 
     static Message SongPositionPointer(uint32_t time, uint16_t position) {
@@ -318,7 +319,7 @@ public:
             static_cast<uint8_t>(position & 0x7F), 
             static_cast<uint8_t>(position >> 7)
         };
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
     static Message PitchBend(uint32_t time, uint8_t channel, int16_t value ) {
@@ -329,7 +330,7 @@ public:
             static_cast<uint8_t>(value & 0x7F), 
             static_cast<uint8_t>(value >> 7)
         };
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
     static Message QuarterFrame(uint32_t time, uint8_t type, uint8_t value) {
@@ -337,7 +338,7 @@ public:
             static_cast<uint8_t>(message_attr(MessageType::QuarterFrame).status),
             static_cast<uint8_t>((type << 4) | value )
         };
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
     static Message Meta(uint32_t time, MetaType metaType, const container::SmallBytes &metaValue) {
@@ -349,10 +350,10 @@ public:
         std::copy(lenBytes.begin(), lenBytes.end(), data.begin() + 2);
         std::copy(metaValue.begin(), metaValue.end(), data.begin() + 2 + lenBytes.size());
 
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
-    inline static Message Meta(uint32_t time, MetaType metaType, const std::string &metaValue) {
+    static Message Meta(uint32_t time, MetaType metaType, const std::string &metaValue) {
         container::SmallBytes lenBytes = utils::make_variable_length(metaValue.size());
         container::SmallBytes data(metaValue.size() + lenBytes.size() + 2);
 
@@ -361,53 +362,53 @@ public:
         std::copy(lenBytes.begin(), lenBytes.end(), data.begin() + 2);
         std::copy(metaValue.begin(), metaValue.end(), data.begin() + 2 + lenBytes.size());
 
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
-    static Message Text(uint32_t time, const std::string &text) {
+    static Message Text(const uint32_t time, const std::string &text) {
         return Meta(time, MetaType::Text, text);
     };
 
-    static Message TrackName(uint32_t time, const std::string &name) {
+    static Message TrackName(const uint32_t time, const std::string &name) {
         return Meta(time, MetaType::TrackName, name);
     };
 
-    static Message InstrumentName(uint32_t time, const std::string &name) {
+    static Message InstrumentName(const uint32_t time, const std::string &name) {
         return Meta(time, MetaType::InstrumentName, name);
     };
 
-    static Message Lyric(uint32_t time, const std::string &lyric) {
+    static Message Lyric(const uint32_t time, const std::string &lyric) {
         return Meta(time, MetaType::Lyric, lyric);
     };
 
-    static Message Marker(uint32_t time, const std::string &marker) {
+    static Message Marker(const uint32_t time, const std::string &marker) {
         return Meta(time, MetaType::Marker, marker);
     };
 
-    static Message CuePoint(uint32_t time, const std::string &cuePoint) {
+    static Message CuePoint(const uint32_t time, const std::string &cuePoint) {
         return Meta(time, MetaType::CuePoint, cuePoint);
     };
 
-    static Message MIDIChannelPrefix(uint32_t time, uint8_t channel) {
+    static Message MIDIChannelPrefix(const uint32_t time, const uint8_t channel) {
         container::SmallBytes data = { 
             message_attr(MessageType::Meta).status, //0xFF, 
             static_cast<uint8_t>(message::MetaType::MIDIChannelPrefix), //0x20, 
             static_cast<uint8_t>(1), 
             channel
         };
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
-    static Message EndOfTrack(uint32_t time) {
+    static Message EndOfTrack(const uint32_t time) {
         container::SmallBytes data = { 
             message_attr(MessageType::Meta).status, //0xFF, 
             static_cast<uint8_t>(message::MetaType::EndOfTrack), //0x2F, 
             static_cast<uint8_t>(0)
         };
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
-    static Message SetTempo(uint32_t time, uint32_t tempo) {
+    static Message SetTempo(const uint32_t time, const uint32_t tempo) {
         container::SmallBytes data = { 
             message_attr(MessageType::Meta).status, //0xFF, 
             static_cast<uint8_t>(message::MetaType::SetTempo), //0x51, 
@@ -416,10 +417,10 @@ public:
             static_cast<uint8_t>((tempo >> 8) & 0xFF), 
             static_cast<uint8_t>(tempo & 0xFF)
         };
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
-    static Message SMPTEOffset(uint32_t time, uint8_t hour, uint8_t minute, uint8_t second, uint8_t frame, uint8_t subframe) {
+    static Message SMPTEOffset(const uint32_t time, const uint8_t hour, const uint8_t minute,const  uint8_t second, const uint8_t frame, const uint8_t subframe) {
         container::SmallBytes data = { 
             message_attr(MessageType::Meta).status, //0xFF, 
             static_cast<uint8_t>(message::MetaType::SMPTEOffset), //0x54, 
@@ -430,10 +431,10 @@ public:
             frame, 
             subframe
         };
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
-    static Message TimeSignature(uint32_t time, uint8_t numerator, uint8_t denominator) {
+    static Message TimeSignature(const uint32_t time, const uint8_t numerator, const uint8_t denominator) {
         container::SmallBytes data = { 
             message_attr(MessageType::Meta).status, //0xFF, 
             static_cast<uint8_t>(message::MetaType::TimeSignature), //0x58, 
@@ -443,10 +444,10 @@ public:
             static_cast<uint8_t>(0x18), 
             static_cast<uint8_t>(0x08)
         };
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
-    static Message KeySignature(uint32_t time, int8_t key, uint8_t tonality) {
+    static Message KeySignature(const uint32_t time, const int8_t key, const uint8_t tonality) {
         container::SmallBytes data = { 
             message_attr(MessageType::Meta).status, //0xFF, 
             static_cast<uint8_t>(message::MetaType::KeySignature), //0x59, 
@@ -454,74 +455,74 @@ public:
             static_cast<uint8_t>(key), 
             tonality
         };
-        return Message(time, std::move(data));
+        return {time, std::move(data)};
     };
 
-    [[nodiscard]] inline uint32_t get_time() const { return time; };
+    [[nodiscard]] uint32_t get_time() const { return time; };
 
-    [[nodiscard]] inline const container::SmallBytes &get_data() const { return data; };
+    [[nodiscard]] const container::SmallBytes &get_data() const { return data; };
 
-    [[nodiscard]] inline MessageType get_type() const { return msgType; };
+    [[nodiscard]] MessageType get_type() const { return msgType; };
 
-    [[nodiscard]] inline std::string get_type_string() const {
+    [[nodiscard]] std::string get_type_string() const {
         return message_type_to_string(this->get_type());
     }
 
-    [[nodiscard]] inline uint8_t get_channel() const { return data[0] & 0x0F; };
+    [[nodiscard]] uint8_t get_channel() const { return data[0] & 0x0F; };
 
-    [[nodiscard]] inline uint8_t get_pitch() const { return this->data[1]; };
+    [[nodiscard]] uint8_t get_pitch() const { return this->data[1]; };
 
-    [[nodiscard]] inline uint8_t get_velocity() const { return data[2]; };
+    [[nodiscard]] uint8_t get_velocity() const { return data[2]; };
 
-    [[nodiscard]] inline uint8_t get_control_number() const { return data[1]; };
+    [[nodiscard]] uint8_t get_control_number() const { return data[1]; };
 
-    [[nodiscard]] inline uint8_t get_control_value() const { return data[2]; };
+    [[nodiscard]] uint8_t get_control_value() const { return data[2]; };
 
-    [[nodiscard]] inline uint8_t get_program() const { return data[1]; };
+    [[nodiscard]] uint8_t get_program() const { return data[1]; };
 
-    [[nodiscard]] inline MetaType get_meta_type() const {
+    [[nodiscard]] MetaType get_meta_type() const {
         return status_to_meta_type(this->data[1]);
     };
 
-    [[nodiscard]] inline std::string get_meta_type_string() const {
+    [[nodiscard]] std::string get_meta_type_string() const {
         return meta_type_to_string(this->get_meta_type());
     }
 
-    [[nodiscard]] inline container::SmallBytes get_meta_value() const {
+    [[nodiscard]] container::SmallBytes get_meta_value() const {
         // Clang-Tidy: Avoid repeating the return type from the declaration;
         // use a braced initializer list instead
         return {this->data.begin() + 3, this->data.end()};
     };
 
-    [[nodiscard]] inline uint32_t get_tempo() const {
+    [[nodiscard]] uint32_t get_tempo() const {
         return utils::read_msb_bytes(const_cast<uint8_t *>(this->data.data()) + 3, 3);
     };
 
-    [[nodiscard]] inline message::TimeSignature get_time_signature() const {
+    [[nodiscard]] message::TimeSignature get_time_signature() const {
         // Clang-Tidy: Avoid repeating the return type from the declaration;
         // use a braced initializer list instead
         return {data[3], static_cast<uint8_t>(1 << data[4])};
     };
 
-    [[nodiscard]] inline message::KeySignature get_key_signature() const {
+    [[nodiscard]] message::KeySignature get_key_signature() const {
         // Clang-Tidy: Avoid repeating the return type from the declaration;
         // use a braced initializer list instead
         return {static_cast<int8_t>(data[3]), data[4]};
     }
 
-    [[nodiscard]] inline int16_t get_pitch_bend() const {
-        return static_cast<int16_t>(data[1] | (data[2] << 7)) + MIN_PITCHBEND;
+    [[nodiscard]] int16_t get_pitch_bend() const {
+        return static_cast<int16_t>(data[1] | (data[2] << 7) + MIN_PITCHBEND);
     };
 
-    [[nodiscard]] inline uint16_t get_song_position_pointer() const {
+    [[nodiscard]] uint16_t get_song_position_pointer() const {
         return static_cast<uint16_t>(data[1] | (data[2] << 7));
     };
 
-    [[nodiscard]] inline uint8_t get_frame_type() const {
+    [[nodiscard]] uint8_t get_frame_type() const {
         return data[1] >> 4;
     };
 
-    [[nodiscard]] inline uint8_t get_frame_value() const {
+    [[nodiscard]] uint8_t get_frame_value() const {
         return data[1] & 0x0F;
     };
 
@@ -532,66 +533,64 @@ inline std::ostream &operator<<(std::ostream &out, const Message &message) {
     out << message.get_type_string() << "] ";
 
     switch (message.get_type()) {
-        case (message::MessageType::NoteOn): {
-            out << "channel=" << (int) message.get_channel() << " pitch=" << (int) message.get_pitch() << " velocity="
-                << (int) message.get_velocity();
+        case (MessageType::NoteOn): {}  // the same as NoteOff
+        case (MessageType::NoteOff): {
+            out << "channel="   << static_cast<int>(message.get_channel())
+                << " pitch="    << static_cast<int>(message.get_pitch())
+                << " velocity=" << static_cast<int>(message.get_velocity());
             break;
         };
-        case (message::MessageType::NoteOff): {
-            out << "channel=" << (int) message.get_channel() << " pitch=" << (int) message.get_pitch() << " velocity="
-                << (int) message.get_velocity();
+        case (MessageType::ProgramChange): {
+            out << "channel="   << static_cast<int>(message.get_channel())
+                << " program="  << static_cast<int>(message.get_program());
             break;
         };
-        case (message::MessageType::ProgramChange): {
-            out << "channel=" << (int) message.get_channel() << " program=" << (int) message.get_program();
+        case (MessageType::ControlChange): {
+            out << "channel="           << static_cast<int>(message.get_channel())
+                << " control number="   << static_cast<int>(message.get_control_number())
+                << " control value="    << static_cast<int>(message.get_control_value());
             break;
         };
-        case (message::MessageType::ControlChange): {
-            out << "channel=" << (int) message.get_channel() << " control number=" << (int) message.get_control_number()
-                << " control value=" << (int) message.get_control_value();
-            break;
-        };
-        case (message::MessageType::Meta): {
+        case (MessageType::Meta): {
             out << "(" << message.get_meta_type_string() << ") ";
             switch (message.get_meta_type()) {
-                case (message::MetaType::TrackName): {
+                case (MetaType::TrackName): {
                     const auto &data = message.get_meta_value();
                     out << std::string(data.begin(), data.end());
                     break;
                 };
-                case (message::MetaType::InstrumentName): {
+                case (MetaType::InstrumentName): {
                     const auto &data = message.get_meta_value();
                     out << std::string(data.begin(), data.end());
                     break;
                 };
-                case (message::MetaType::TimeSignature): {
-                    message::TimeSignature timeSig = message.get_time_signature();
-                    out << (int) timeSig.numerator << "/" << (int) timeSig.denominator;
+                case (MetaType::TimeSignature): {
+                    const TimeSignature timeSig = message.get_time_signature();
+                    out << static_cast<int>(timeSig.numerator) << "/" << static_cast<int>(timeSig.denominator);
                     break;
                 };
-                case (message::MetaType::SetTempo): {
-                    out << (int) message.get_tempo();
+                case (MetaType::SetTempo): {
+                    out << static_cast<int>(message.get_tempo());
                     break;
                 };
-                case (message::MetaType::KeySignature): {
+                case (MetaType::KeySignature): {
                     out << message.get_key_signature().to_string();
                     break;
                 }
-                case (message::MetaType::EndOfTrack): {
+                case (MetaType::EndOfTrack): {
                     break;
                 }
                 default: {
                     const auto &data = message.get_meta_value();
-                    out << (int) message.get_meta_type() << " value=" << container::to_string(data);
-                    // utils::print_bytes(message.get_data());
+                    out << static_cast<int>(message.get_meta_type()) << " value=" << container::to_string(data);
                     break;
                 }
             }
             break;
         };
         default: {
-            out << "Status code: " << (int) message::message_attr(message.get_type()).status << " length="
-                << message.get_data().size();
+            out << "Status code: "  << static_cast<int>(message_attr(message.get_type()).status)
+                << " length="       << message.get_data().size();
             break;
         };
     }
@@ -599,17 +598,16 @@ inline std::ostream &operator<<(std::ostream &out, const Message &message) {
     return out;
 };
 
-typedef std::vector<message::Message> Messages;
+typedef std::vector<Message> Messages;
 
 inline Messages filter_message(const Messages& messages, const std::function<bool(const Message &)> &filter) {
-    message::Messages new_messages;
+    Messages new_messages;
     new_messages.reserve(messages.size());
     std::copy_if(messages.begin(),
                 messages.end(),
                 std::back_inserter(new_messages),
                 filter);
-    message::Messages(new_messages).swap(new_messages);
-
+    new_messages.shrink_to_fit();
     return new_messages;
 };
 
@@ -626,10 +624,10 @@ public:
     Track() = default;
 
     // explicit Track(const container::ByteSpan data) {
-    Track(uint8_t *cursor, size_t size) {
+    Track(const uint8_t *cursor, const size_t size) {
         messages.reserve(size / 3 + 100);
         // auto *cursor = const_cast<uint8_t *>(data.data());
-        uint8_t *bufferEnd = cursor + size;
+        const uint8_t *bufferEnd = cursor + size;
 
         uint32_t tickOffset = 0;
         uint8_t prevStatusCode = 0x00;
@@ -653,7 +651,7 @@ public:
             // Meta message
             else if ((*cursor) == 0xFF) {
                 prevStatusCode = (*cursor);
-                uint8_t *prevBuffer = cursor;
+                const uint8_t *prevBuffer = cursor;
                 cursor += 2;
                 prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
 
@@ -666,7 +664,7 @@ public:
             // SysEx message
             else if ((*cursor) == 0xF0) {
                 prevStatusCode = (*cursor);
-                uint8_t *prevBuffer = cursor;
+                const uint8_t *prevBuffer = cursor;
                 cursor += 1;
                 prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
 
@@ -705,15 +703,19 @@ public:
         this->messages = std::vector(std::move(message));
     };
 
-    inline message::Message &message(uint32_t index) {
+    message::Message &message(const uint32_t index) {
         return this->messages[index];
     };
 
-    [[nodiscard]] inline size_t message_num() const {
+    [[nodiscard]] const message::Message &message(const uint32_t index) const {
+        return this->messages[index];
+    };
+
+    [[nodiscard]] size_t message_num() const {
         return this->messages.size();
     };
 
-    inline container::Bytes to_bytes() const {
+    [[nodiscard]] container::Bytes to_bytes() const {
         message::Messages messages_to_bytes = message::filter_message(
             this->messages,
             [](const message::Message& msg) {
@@ -743,18 +745,18 @@ public:
         uint8_t lastEventStatus = 0x00;
         for(int i = 0; i < messages_to_bytes.size(); ++i) {
             container::SmallBytes timeData = utils::make_variable_length(times[i]);
-            std::copy(timeData.begin(), timeData.end(), trackBytes.begin() + cursor);
+            std::copy(timeData.begin(), timeData.end(), trackBytes.begin() + static_cast<long long>(cursor));
             cursor += timeData.size();
 
             // Running status
             if(!(messages_to_bytes[i].get_data()[0] == 0xFF ||
                 messages_to_bytes[i].get_data()[0] == 0xF7) &&
                 messages_to_bytes[i].get_data()[0] == lastEventStatus) {
-                std::copy(messages_to_bytes[i].get_data().begin() + 1, messages_to_bytes[i].get_data().end(), trackBytes.begin() + cursor);
+                std::copy(messages_to_bytes[i].get_data().begin() + 1, messages_to_bytes[i].get_data().end(), trackBytes.begin() + static_cast<long long>(cursor));
                 cursor += messages_to_bytes[i].get_data().size() - 1;
             }
             else {
-                std::copy(messages_to_bytes[i].get_data().begin(), messages_to_bytes[i].get_data().end(), trackBytes.begin() + cursor);
+                std::copy(messages_to_bytes[i].get_data().begin(), messages_to_bytes[i].get_data().end(), trackBytes.begin() + static_cast<long long>(cursor));
                 cursor += messages_to_bytes[i].get_data().size();
             }
             lastEventStatus = messages_to_bytes[i].get_data()[0];
@@ -768,7 +770,7 @@ public:
     };
 };
 
-inline std::ostream &operator<<(std::ostream &out, Track &track) {
+inline std::ostream &operator<<(std::ostream &out, const Track &track) {
     for (int j = 0; j < track.message_num(); ++j) {
         out << track.message(j) << std::endl;
     }
@@ -803,17 +805,16 @@ inline const std::string &format_to_string(const MidiFormat &format) {
 #undef MIDI_FORMAT_MEMBER
     };
 
-    return formats[(int) format];
+    return formats[static_cast<int>(format)];
 };
 
-inline MidiFormat read_midiformat(uint16_t data) {
+inline MidiFormat read_midiformat(const uint16_t data) {
     switch (data) {
 #define MIDI_FORMAT_MEMBER(type, status) case status: return MidiFormat::type;
         MIDI_FORMAT
 #undef MIDI_FORMAT_MEMBER
+        default: throw std::ios_base::failure("Invaild midi format!");
     }
-
-    throw std::ios_base::failure("Invaild midi format!");
 };
 
 class MidiFile {
@@ -833,20 +834,20 @@ public:
 
     // MidiFile() = default;
 
-    explicit MidiFile(const container::Bytes &data) {
-        if (data.size() < 4)
+    explicit MidiFile(const uint8_t* const data, const size_t size) {
+        if (size < 4)
             throw std::ios_base::failure("Invaild midi file!");
 
-        auto *cursor = const_cast<uint8_t *>(data.data());
-        uint8_t *bufferEnd = cursor + data.size();
+        const uint8_t* cursor = data;
+        const uint8_t* bufferEnd = cursor + size;
 
-        if (!(std::string(reinterpret_cast<const char*>(cursor), 4).compare(MTHD) == 0 &&
+        if (!(std::string(reinterpret_cast<const char*>(cursor), 4) == MTHD &&
               utils::read_msb_bytes(cursor + 4, 4) == 6
         ))
             throw std::ios_base::failure("Invaild midi file!");
 
         this->format = read_midiformat(utils::read_msb_bytes(cursor + 8, 2));
-        uint16_t trackNum = utils::read_msb_bytes(cursor + 10, 2);
+        const uint16_t trackNum = utils::read_msb_bytes(cursor + 10, 2);
         this->divisionType = ((*(cursor + 12)) & 0x80) >> 7;
         this->ticksPerQuarter = (((*(cursor + 12)) & 0x7F) << 8) + (*(cursor + 13));
 
@@ -854,12 +855,12 @@ public:
         tracks.reserve(trackNum);
         for (int i = 0; i < trackNum; ++i) {
             // Skip unknown chunk
-            while(std::string(reinterpret_cast<const char*>(cursor), 4).compare(track::MTRK) != 0) {
-                size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
+            while(std::string(reinterpret_cast<const char*>(cursor), 4) != track::MTRK) {
+                const size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
                 cursor += (8 + chunkLen);
             }
 
-            size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
+            const size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
 
             if (cursor + chunkLen + 8 > bufferEnd)
                 throw std::ios_base::failure("Unexpected EOF in file!");
@@ -868,10 +869,12 @@ public:
             cursor += (8 + chunkLen);
         }
     };
+
+    explicit MidiFile(const container::Bytes &data) : MidiFile(data.data(), data.size()) {};
     
-    explicit MidiFile(MidiFormat format=MidiFormat::MultiTrack,
-                    uint8_t divisionType=0,
-                    uint16_t ticksPerQuarter=960) {
+    explicit MidiFile(const MidiFormat format=MidiFormat::MultiTrack,
+                    const uint8_t divisionType=0,
+                    const uint16_t ticksPerQuarter=960) {
         this->format = format;
         this->divisionType = divisionType;
         this->ticksPerQuarter = ticksPerQuarter;
@@ -884,14 +887,14 @@ public:
             throw std::ios_base::failure("Reading file failed!");
 
         fseek(filePtr, 0, SEEK_END);
-        size_t fileLen = ftell(filePtr);
+        const size_t fileLen = ftell(filePtr);
 
-        container::Bytes data = container::Bytes(fileLen);
+        container::Bytes data(fileLen);
         fseek(filePtr, 0, SEEK_SET);
         fread(data.data(), 1, fileLen, filePtr);
         fclose(filePtr);
 
-        return MidiFile(data);
+        return MidiFile(data.data(), fileLen);
     };
 
     container::Bytes to_bytes() {
@@ -914,7 +917,7 @@ public:
         // Write track
         size_t cursor = 14;
         for (const auto& thisTrackBytes: trackBytes) {
-            std::copy(thisTrackBytes.begin(), thisTrackBytes.end(), midiBytes.begin() + cursor);
+            std::copy(thisTrackBytes.begin(), thisTrackBytes.end(), midiBytes.begin() + static_cast<long long>(cursor));
             cursor += thisTrackBytes.size();
         }
 
@@ -927,24 +930,24 @@ public:
         if (!filePtr)
             throw std::ios_base::failure("Create file failed!");
 
-        container::Bytes midiBytes = this->to_bytes();
+        const container::Bytes midiBytes = this->to_bytes();
         fwrite(midiBytes.data(), 1, midiBytes.size(), filePtr);
         fclose(filePtr);
     };
 
-    [[nodiscard]] inline MidiFormat get_format() const {
+    [[nodiscard]] MidiFormat get_format() const {
         return this->format;
     };
 
-    [[nodiscard]] inline std::string get_format_string() const {
+    [[nodiscard]] std::string get_format_string() const {
         return format_to_string(this->get_format());
     }
 
-    [[nodiscard]] inline uint16_t get_division_type() const {
-        return static_cast<uint16_t>(this->divisionType);
+    [[nodiscard]] uint16_t get_division_type() const {
+        return this->divisionType;
     };
 
-    [[nodiscard]] inline uint16_t get_tick_per_quarter() const {
+    [[nodiscard]] uint16_t get_tick_per_quarter() const {
         if (!this->get_division_type()) return this->ticksPerQuarter;
         else {
             std::cerr << "Division type 1 have no tpq." << std::endl;
@@ -952,11 +955,11 @@ public:
         };
     };
 
-    [[nodiscard]] inline uint16_t get_frame_per_second() const {
+    [[nodiscard]] uint16_t get_frame_per_second() const {
         return (~(this->negativeSmpte - 1)) & 0x3F;
     };
 
-    [[nodiscard]] inline uint16_t get_tick_per_second() const {
+    [[nodiscard]] uint16_t get_tick_per_second() const {
         if (this->get_division_type()) return this->ticksPerFrame * this->get_frame_per_second();
         else {
             std::cerr << "Division type 0 have no tps." << std::endl;
@@ -964,18 +967,22 @@ public:
         };
     };
 
-    inline track::Track &track(uint32_t index) {
+    track::Track &track(const uint32_t index) {
         return this->tracks[index];
     };
 
-    [[nodiscard]] inline size_t track_num() const {
+    [[nodiscard]] const track::Track &track(const uint32_t index) const {
+        return this->tracks[index];
+    };
+
+    [[nodiscard]] size_t track_num() const {
         return this->tracks.size();
     };
 };
 
 #undef MIDI_FORMAT
 
-inline std::ostream &operator<<(std::ostream &out, MidiFile &file) {
+inline std::ostream &operator<<(std::ostream &out, const MidiFile &file) {
     out << "File format: " << file.get_format_string() << std::endl;
     out << "Division:\n" << "    Type: " << file.get_division_type() << std::endl;
     if (file.get_division_type()) {
@@ -999,4 +1006,4 @@ inline std::ostream &operator<<(std::ostream &out, MidiFile &file) {
 }
 
 
-#endif
+#endif //MINIMIDI_HPP
