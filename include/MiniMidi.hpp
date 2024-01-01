@@ -19,7 +19,6 @@
 #include<numeric>
 #include<cmath>
 #include<functional>
-#include<span>
 #include"svector.h"
 
 namespace minimidi {
@@ -27,7 +26,6 @@ namespace minimidi {
 namespace container {
 
 typedef std::vector<uint8_t> Bytes;
-typedef std::span<const uint8_t> ByteSpan;
 
 // size of SmallBytes is totally 8 bytes on the stack (7 bytes + 1 byte for size)
 typedef ankerl::svector<uint8_t, 7> SmallBytes;
@@ -58,7 +56,7 @@ inline std::ostream &operator<<(std::ostream &out, const container::Bytes &data)
 
 namespace utils {
 
-inline uint32_t read_variable_length(uint8_t *&buffer) {
+inline uint32_t read_variable_length(const uint8_t *&buffer) {
     uint32_t value = 0;
 
     for (auto i = 0; i < 4; ++i) {
@@ -626,7 +624,7 @@ public:
     Track() = default;
 
     // explicit Track(const container::ByteSpan data) {
-    Track(uint8_t *cursor, size_t size) {
+    Track(const uint8_t *cursor, const size_t size) {
         messages.reserve(size / 3 + 100);
         // auto *cursor = const_cast<uint8_t *>(data.data());
         const uint8_t *bufferEnd = cursor + size;
@@ -653,7 +651,7 @@ public:
             // Meta message
             else if ((*cursor) == 0xFF) {
                 prevStatusCode = (*cursor);
-                uint8_t *prevBuffer = cursor;
+                const uint8_t *prevBuffer = cursor;
                 cursor += 2;
                 prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
 
@@ -666,7 +664,7 @@ public:
             // SysEx message
             else if ((*cursor) == 0xF0) {
                 prevStatusCode = (*cursor);
-                uint8_t *prevBuffer = cursor;
+                const uint8_t *prevBuffer = cursor;
                 cursor += 1;
                 prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
 
@@ -832,12 +830,12 @@ public:
 
     // MidiFile() = default;
 
-    explicit MidiFile(const container::ByteSpan data) {
-        if (data.size() < 4)
+    explicit MidiFile(const uint8_t* const data, const size_t size) {
+        if (size < 4)
             throw std::ios_base::failure("Invaild midi file!");
 
-        auto *cursor = const_cast<uint8_t *>(data.data());
-        const uint8_t *bufferEnd = cursor + data.size();
+        const uint8_t* cursor = data;
+        const uint8_t* bufferEnd = cursor + size;
 
         if (!(std::string(reinterpret_cast<const char*>(cursor), 4) == MTHD &&
               utils::read_msb_bytes(cursor + 4, 4) == 6
@@ -867,6 +865,8 @@ public:
             cursor += (8 + chunkLen);
         }
     };
+
+    explicit MidiFile(const container::Bytes &data) : MidiFile(data.data(), data.size()) {};
     
     explicit MidiFile(const MidiFormat format=MidiFormat::MultiTrack,
                     const uint8_t divisionType=0,
@@ -890,7 +890,7 @@ public:
         fread(data.data(), 1, fileLen, filePtr);
         fclose(filePtr);
 
-        return MidiFile(data);
+        return MidiFile(data.data(), fileLen);
     };
 
     container::Bytes to_bytes() {
