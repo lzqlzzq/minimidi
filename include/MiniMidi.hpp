@@ -278,6 +278,12 @@ public:
         this->data = std::move(data);
     };
 
+    Message(uint32_t time, MessageType msgType, container::SmallBytes &&data) {
+        this->time = time;
+        this->msgType = msgType;
+        this->data = std::move(data);
+    };
+
     static Message NoteOn(uint32_t time, uint8_t channel, uint8_t pitch, uint8_t velocity) {
         container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::NoteOn).status | channel), pitch, velocity};
         return {time, std::move(data)};
@@ -626,7 +632,6 @@ public:
     // explicit Track(const container::ByteSpan data) {
     Track(const uint8_t *cursor, const size_t size) {
         messages.reserve(size / 3 + 100);
-        // auto *cursor = const_cast<uint8_t *>(data.data());
         const uint8_t *bufferEnd = cursor + size;
 
         uint32_t tickOffset = 0;
@@ -659,6 +664,11 @@ public:
                     throw std::ios_base::failure("Unexpected EOF of Meta Event!");
 
                 messageData = container::SmallBytes(prevBuffer, prevBuffer + prevEventLen);
+
+                if (message::status_to_meta_type(*(cursor + 1)) == message::MetaType::EndOfTrack) {
+                    break;
+                }
+
                 cursor += prevEventLen - (cursor - prevBuffer);
             }
             // SysEx message
@@ -687,15 +697,11 @@ public:
                 throw std::ios_base::failure("Unexpected EOF in track.");
             }
 
-            // message::Message msg = message::Message(tickOffset, messageData);
-            // this->messages.push_back(msg);
-            messages.emplace_back(tickOffset, std::move(messageData));
-            const auto & msg = messages.back();
-            if (msg.get_type() == message::MessageType::Meta &&
-                msg.get_meta_type() == message::MetaType::EndOfTrack) {
-                break;
-            }
+            messages.emplace_back(tickOffset,
+                message::status_to_message_type(prevStatusCode),
+                std::move(messageData));
         }
+
         message::Messages(this->messages).swap(this->messages);
     };
 
