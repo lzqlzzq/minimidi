@@ -98,18 +98,6 @@ inline uint8_t variable_length_bytes(uint32_t num) {
         return 4;
 };
 
-inline container::SmallBytes make_variable_length(uint32_t num) {
-    uint8_t byteNum = variable_length_bytes(num);
-    container::SmallBytes result(byteNum);
-
-    for(auto i = 0; i < byteNum - 1; ++i) {
-        result[i] = (num >> (7 * (byteNum - i - 1))) | 0x80;
-    }
-    result[byteNum - 1] = num & 0x7F;
-
-    return result;
-};
-
 inline void write_variable_length(uint8_t *&buffer, uint32_t num) {
     uint8_t byteNum = variable_length_bytes(num);
 
@@ -119,6 +107,16 @@ inline void write_variable_length(uint8_t *&buffer, uint32_t num) {
     }
     *buffer = num & 0x7F;
     ++buffer;
+};
+
+inline container::SmallBytes make_variable_length(uint32_t num) {
+    uint8_t byteNum = variable_length_bytes(num);
+
+    container::SmallBytes result(byteNum);
+    uint8_t* cursor = const_cast<uint8_t*>(result.data());
+    write_variable_length(cursor, num);
+
+    return result;
 };
 
 }
@@ -742,51 +740,67 @@ public:
         return this->messages.size();
     };
 
+
     [[nodiscard]] container::Bytes to_bytes() const {
-        message::Messages messages_to_bytes = message::filter_message(
-            this->messages,
-            [](const message::Message& msg) {
-                    return msg.get_type() != message::MessageType::Meta ||
-                        msg.get_meta_type() != message::MetaType::EndOfTrack;
-            });
+        // Prepare EOT
+        static const message::Message _eot = message::Message::EndOfTrack(0);
 
-        std::stable_sort(messages_to_bytes.begin(),
-            messages_to_bytes.end(),
-            [](const message::Message& msg1, const message::Message& msg2) {
-                return msg1.get_time() < msg2.get_time();
+        struct SortHelper {
+            uint32_t time;
+            size_t index;
+        };
+        std::vector<SortHelper> msgHeaders;
+        msgHeaders.reserve(this->messages.size());
+
+        for (int i = 0; i < this->messages.size(); ++i)
+        {
+            if(this->messages[i].get_type() != message::MessageType::Meta ||
+                this->messages[i].get_meta_type() != message::MetaType::EndOfTrack)
+                msgHeaders.emplace_back(this->messages[i].get_time(), i);
+        }
+
+        std::stable_sort(msgHeaders.begin(),
+            msgHeaders.end(),
+            [](const SortHelper& msg1, const SortHelper& msg2) {
+                return msg1.time < msg2.time;
         });
-        messages_to_bytes.emplace_back(message::Message::EndOfTrack(messages_to_bytes.back().get_time() + 1));
 
-        std::vector<uint32_t> times(messages_to_bytes.size());
-        std::vector<size_t> dataLen(messages_to_bytes.size());
-        for(int i = 0; i < messages_to_bytes.size(); ++i) {
-            times[i] = messages_to_bytes[i].get_time();
-            dataLen[i] = messages_to_bytes[i].get_data().size();
+        std::vector<uint32_t> times(msgHeaders.size());
+        std::vector<size_t> dataLen(msgHeaders.size());
+        for(int i = 0; i < msgHeaders.size(); ++i) {
+            times[i] = msgHeaders[i].time;
+            dataLen[i] = this->messages[msgHeaders[i].index].get_data().size();
         }
         std::adjacent_difference(times.begin(), times.end(), times.begin());
 
-        container::Bytes trackBytes(std::reduce(dataLen.begin(), dataLen.end()) + 4 * messages_to_bytes.size() + 8);
+        container::Bytes trackBytes(std::reduce(dataLen.begin(), dataLen.end()) + 4 * msgHeaders.size() + 8);
 
         uint8_t* cursor = trackBytes.data();
         std::copy(MTRK.begin(), MTRK.end(), cursor);
         cursor += 8;
         uint8_t lastEventStatus = 0x00;
-        for(int i = 0; i < messages_to_bytes.size(); ++i) {
+        for(int i = 0; i < msgHeaders.size(); ++i) {
+            const message::Message &thisMsg = this->messages[msgHeaders[i].index];
             utils::write_variable_length(cursor, times[i]);
 
             // Running status
-            if(!(messages_to_bytes[i].get_data()[0] == 0xFF ||
-                messages_to_bytes[i].get_data()[0] == 0xF7) &&
-                messages_to_bytes[i].get_data()[0] == lastEventStatus) {
-                std::copy(messages_to_bytes[i].get_data().begin() + 1, messages_to_bytes[i].get_data().end(), cursor);
-                cursor += messages_to_bytes[i].get_data().size() - 1;
+            if(!(thisMsg.get_data()[0] == 0xFF ||
+                thisMsg.get_data()[0] == 0xF7) &&
+                thisMsg.get_data()[0] == lastEventStatus) {
+                std::copy(thisMsg.get_data().begin() + 1, thisMsg.get_data().end(), cursor);
+                cursor += thisMsg.get_data().size() - 1;
             }
             else {
-                std::copy(messages_to_bytes[i].get_data().begin(), messages_to_bytes[i].get_data().end(), cursor);
-                cursor += messages_to_bytes[i].get_data().size();
+                std::copy(thisMsg.get_data().begin(), thisMsg.get_data().end(), cursor);
+                cursor += thisMsg.get_data().size();
             }
-            lastEventStatus = messages_to_bytes[i].get_data()[0];
+            lastEventStatus = thisMsg.get_data()[0];
         }
+        // Write EOT
+        utils::write_variable_length(cursor, times.back() + 1);
+        std::copy(_eot.get_data().begin(), _eot.get_data().end(), cursor);
+        cursor += _eot.get_data().size();
+
         // Write track chunk length
         utils::write_msb_bytes(trackBytes.data() + 4, cursor - trackBytes.data() - 8, 4);
 
@@ -794,6 +808,7 @@ public:
 
         return trackBytes;
     };
+
 };
 
 inline std::ostream &operator<<(std::ostream &out, const Track &track) {
