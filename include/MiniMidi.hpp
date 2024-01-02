@@ -168,41 +168,42 @@ inline std::string message_type_to_string(const MessageType &messageType) {
 
     return "Unknown";
 };
-
 typedef struct {
     uint8_t status;
+    MessageType type;
     size_t length;
 } MessageAttr;
 
-inline const MessageAttr &message_attr(const MessageType &messageType) {
-    static const MessageAttr MESSAGE_ATTRS[] = {
-#define MIDI_MESSAGE_TYPE_MEMBER(type, status, length) {status, length},
-        MIDI_MESSAGE_TYPE
+static constexpr MessageAttr MESSAGE_ATTRS[] = {
+#define MIDI_MESSAGE_TYPE_MEMBER(type, status, length) {status, MessageType::type, length},
+    MIDI_MESSAGE_TYPE
 #undef MIDI_MESSAGE_TYPE_MEMBER
-    };
+};
+
+inline const MessageAttr &message_attr(const MessageType &messageType) {
     return MESSAGE_ATTRS[static_cast<std::underlying_type_t<MessageType>>(messageType)];
 };
 
-inline MessageType status_to_message_type(uint8_t status) {
-    if (status < 0xF0) {
-        switch (status & 0xF0) {
-#define MIDI_MESSAGE_TYPE_MEMBER(type, status, length) \
-                case status: return MessageType::type;
-            MIDI_MESSAGE_TYPE
-#undef MIDI_MESSAGE_TYPE_MEMBER
-            default: {} // add a empty default to avoid warning
-        }
-    } else {
-        switch (status) {
-#define MIDI_MESSAGE_TYPE_MEMBER(type, status, length) \
-                case status: return MessageType::type;
-            MIDI_MESSAGE_TYPE
-#undef MIDI_MESSAGE_TYPE_MEMBER
-            default: {} // add a empty default to avoid warning
-        }
+inline constexpr std::array<MessageType, 256> _generate_message_type_table() {
+    std::array<MessageType, 256> LUT {};
+    LUT.fill(MessageType::Unknown);
+
+    for(const auto &msg_attr : MESSAGE_ATTRS) {
+        if(msg_attr.status < 0xF0)
+            for(auto i = 0; i < 0x10; i++)
+                LUT[msg_attr.status | i] = msg_attr.type;
+        else
+            LUT[msg_attr.status] = msg_attr.type;
     }
-    return MessageType::Unknown;
+
+    return LUT;
 };
+
+constexpr auto MESSAGE_TYPE_TABLE = _generate_message_type_table();
+
+inline MessageType status_to_message_type(uint8_t status) {
+    return MESSAGE_TYPE_TABLE[static_cast<size_t>(status)];
+}
 
 enum class MetaType : uint8_t {
 #define MIDI_META_TYPE_MEMBER(type, status) type = status,
