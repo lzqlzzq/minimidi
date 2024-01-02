@@ -85,20 +85,40 @@ inline void write_msb_bytes(uint8_t *buffer, size_t value, size_t length) {
         *buffer = static_cast<uint8_t>((value >> ((length - i) * 8)) & 0xFF);
         ++buffer;
     }
-}
+};
+
+inline uint8_t variable_length_bytes(uint32_t num) {
+    if(num < 0x80)
+        return 1;
+    else if(num < 0x4000)
+        return 2;
+    else if(num < 0x200000)
+        return 3;
+    else
+        return 4;
+};
 
 inline container::SmallBytes make_variable_length(uint32_t num) {
-    uint8_t byteNum = ceil(log2(num + 1) / 7);
-    byteNum = byteNum ? byteNum : 1;
+    uint8_t byteNum = variable_length_bytes(num);
     container::SmallBytes result(byteNum);
 
-    for(auto i = 0; i < byteNum; ++i) {
-        result[i] = (num >> (7 * (byteNum - i - 1)));
-        result[i] |= 0x80;
+    for(auto i = 0; i < byteNum - 1; ++i) {
+        result[i] = (num >> (7 * (byteNum - i - 1))) | 0x80;
     }
-    result.back() &= 0x7F;
+    result[byteNum - 1] = num & 0x7F;
 
     return result;
+};
+
+inline void write_variable_length(uint8_t *&buffer, uint32_t num) {
+    uint8_t byteNum = variable_length_bytes(num);
+
+    for(auto i = 0; i < byteNum - 1; ++i) {
+        *buffer = (num >> (7 * (byteNum - i - 1))) | 0x80;
+        ++buffer;
+    }
+    *buffer = num & 0x7F;
+    ++buffer;
 };
 
 }
@@ -747,31 +767,30 @@ public:
 
         container::Bytes trackBytes(std::reduce(dataLen.begin(), dataLen.end()) + 4 * messages_to_bytes.size() + 8);
 
-        std::copy(MTRK.begin(), MTRK.end(), trackBytes.begin());
-        size_t cursor = 8;
+        uint8_t* cursor = trackBytes.data();
+        std::copy(MTRK.begin(), MTRK.end(), cursor);
+        cursor += 8;
         uint8_t lastEventStatus = 0x00;
         for(int i = 0; i < messages_to_bytes.size(); ++i) {
-            container::SmallBytes timeData = utils::make_variable_length(times[i]);
-            std::copy(timeData.begin(), timeData.end(), trackBytes.begin() + static_cast<long long>(cursor));
-            cursor += timeData.size();
+            utils::write_variable_length(cursor, times[i]);
 
             // Running status
             if(!(messages_to_bytes[i].get_data()[0] == 0xFF ||
                 messages_to_bytes[i].get_data()[0] == 0xF7) &&
                 messages_to_bytes[i].get_data()[0] == lastEventStatus) {
-                std::copy(messages_to_bytes[i].get_data().begin() + 1, messages_to_bytes[i].get_data().end(), trackBytes.begin() + static_cast<long long>(cursor));
+                std::copy(messages_to_bytes[i].get_data().begin() + 1, messages_to_bytes[i].get_data().end(), cursor);
                 cursor += messages_to_bytes[i].get_data().size() - 1;
             }
             else {
-                std::copy(messages_to_bytes[i].get_data().begin(), messages_to_bytes[i].get_data().end(), trackBytes.begin() + static_cast<long long>(cursor));
+                std::copy(messages_to_bytes[i].get_data().begin(), messages_to_bytes[i].get_data().end(), cursor);
                 cursor += messages_to_bytes[i].get_data().size();
             }
             lastEventStatus = messages_to_bytes[i].get_data()[0];
         }
         // Write track chunk length
-        utils::write_msb_bytes(trackBytes.data() + 4, cursor - 8, 4);
+        utils::write_msb_bytes(trackBytes.data() + 4, cursor - trackBytes.data() - 8, 4);
 
-        trackBytes.resize(cursor);
+        trackBytes.resize(cursor - trackBytes.data());
 
         return trackBytes;
     };
