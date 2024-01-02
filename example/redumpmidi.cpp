@@ -23,7 +23,11 @@ using namespace minimidi;
 void write_file(const string& from, const string& to)
 {
     file::MidiFile midiFile = file::MidiFile::from_file(from);
-    midiFile.write_file(to);
+    file::MidiFile midiFile2 = file::MidiFile(midiFile.tracks,
+        file::MidiFormat::MultiTrack,
+        0,
+        midiFile.ticksPerQuarter);
+    midiFile2.write_file(to);
 };
 
 int main(int argc, char *argv[])
