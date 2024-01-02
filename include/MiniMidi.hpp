@@ -262,25 +262,16 @@ public:
 
 class Message {
     uint32_t time;
-    MessageType msgType;
     container::SmallBytes data;
 
 public:
     Message(uint32_t time, const container::SmallBytes &data) {
         this->time = time;
-        this->msgType = status_to_message_type(data[0]);
         this->data = data;
     };
 
     Message(uint32_t time, container::SmallBytes &&data) {
         this->time = time;
-        this->msgType = status_to_message_type(data[0]);
-        this->data = std::move(data);
-    };
-
-    Message(uint32_t time, MessageType msgType, container::SmallBytes &&data) {
-        this->time = time;
-        this->msgType = msgType;
         this->data = std::move(data);
     };
 
@@ -468,7 +459,7 @@ public:
 
     [[nodiscard]] const container::SmallBytes &get_data() const { return data; };
 
-    [[nodiscard]] MessageType get_type() const { return msgType; };
+    [[nodiscard]] MessageType get_type() const { return status_to_message_type(data[0]); };
 
     [[nodiscard]] std::string get_type_string() const {
         return message_type_to_string(this->get_type());
@@ -665,7 +656,9 @@ public:
 
                 messageData = container::SmallBytes(prevBuffer, prevBuffer + prevEventLen);
 
-                if (message::status_to_meta_type(*(cursor + 1)) == message::MetaType::EndOfTrack) {
+                if (message::status_to_meta_type(*(prevBuffer + 1)) == message::MetaType::EndOfTrack) {
+                    messages.emplace_back(tickOffset,
+                        std::move(messageData));
                     break;
                 }
 
@@ -698,7 +691,6 @@ public:
             }
 
             messages.emplace_back(tickOffset,
-                message::status_to_message_type(prevStatusCode),
                 std::move(messageData));
         }
     };
