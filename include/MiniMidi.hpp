@@ -168,6 +168,7 @@ inline std::string message_type_to_string(const MessageType &messageType) {
 
     return "Unknown";
 };
+
 typedef struct {
     uint8_t status;
     MessageType type;
@@ -185,7 +186,7 @@ inline const MessageAttr &message_attr(const MessageType &messageType) {
 };
 
 inline constexpr std::array<MessageType, 256> _generate_message_type_table() {
-    std::array<MessageType, 256> LUT {};
+    std::array<MessageType, 256> LUT;
     LUT.fill(MessageType::Unknown);
 
     for(const auto &msg_attr : MESSAGE_ATTRS) {
@@ -203,24 +204,12 @@ constexpr auto MESSAGE_TYPE_TABLE = _generate_message_type_table();
 
 inline MessageType status_to_message_type(uint8_t status) {
     return MESSAGE_TYPE_TABLE[static_cast<size_t>(status)];
-}
+};
 
 enum class MetaType : uint8_t {
 #define MIDI_META_TYPE_MEMBER(type, status) type = status,
     MIDI_META_TYPE
 #undef MIDI_META_TYPE_MEMBER
-};
-
-inline MetaType status_to_meta_type(uint8_t status) {
-    switch (status) {
-#define MIDI_META_TYPE_MEMBER(type, status) \
-            case status: return MetaType::type;
-        MIDI_META_TYPE
-#undef MIDI_META_TYPE_MEMBER
-        default: {} // add a empty default to avoid warning
-    }
-
-    return MetaType::Unknown;
 };
 
 inline std::string meta_type_to_string(const MetaType &metaType) {
@@ -232,7 +221,28 @@ inline std::string meta_type_to_string(const MetaType &metaType) {
     };
 
     return "Unknown";
-}
+};
+
+inline constexpr std::array<MetaType, 256> _generate_meta_type_table() {
+    std::array<MetaType, 256> LUT;
+    for(auto i = 0; i < 256; i++) {
+        switch(i) {
+            #define MIDI_META_TYPE_MEMBER(type, status) \
+                        case (status): LUT[i] = MetaType::type; break;
+                    MIDI_META_TYPE
+            #undef MIDI_META_TYPE_MEMBER
+            default: LUT[i] = MetaType::Unknown;
+        }
+    }
+
+    return LUT;
+};
+
+constexpr auto META_TYPE_TABLE = _generate_meta_type_table();
+
+inline MetaType status_to_meta_type(uint8_t status) {
+    return META_TYPE_TABLE[static_cast<size_t>(status)];
+};
 
 #undef MIDI_MESSAGE_TYPE
 #undef MIDI_META_TYPE
