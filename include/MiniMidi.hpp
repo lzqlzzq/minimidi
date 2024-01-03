@@ -293,26 +293,39 @@ public:
 
 class Message {
     uint32_t time;
+    uint8_t statusByte;
     container::SmallBytes data;
 
 public:
     Message(const uint32_t time, const container::SmallBytes &data) {
         this->time = time;
-        this->data = data;
+        this->statusByte = data[0];
+        this->data.assign(data.begin() + 1, data.end());
     };
 
     Message(const uint32_t time, container::SmallBytes &&data) {
         this->time = time;
+        this->statusByte = data[0];
+        this->data.assign(data.begin() + 1, data.end());
+    };
+
+    Message(const uint32_t time, const uint8_t statusByte, const container::SmallBytes &data) {
+        this->time = time;
+        this->statusByte = statusByte;
+        this->data = data;
+    };
+
+    Message(const uint32_t time, const uint8_t statusByte, container::SmallBytes &&data) {
+        this->time = time;
+        this->statusByte = statusByte;
         this->data = std::move(data);
     };
 
-    Message(const uint32_t time, const uint8_t *begin, const size_t size):
-        time(time), data(begin, begin + size) {};
+    Message(const uint32_t time, const uint8_t statusByte, const uint8_t *begin, const size_t size):
+        time(time), statusByte(statusByte), data(begin + 1, begin + size) {};
 
-    Message(const uint32_t time, const uint8_t statusCode, const uint8_t *begin, const size_t size):
-        time(time), data(begin - 1, begin + size - 1) {
-        data[0] = statusCode;
-    }
+    Message(const uint32_t time, const uint8_t *begin, const size_t size):
+        time(time), statusByte(*begin), data(begin + 1, begin + size) {};
 
     static Message NoteOn(uint32_t time, uint8_t channel, uint8_t pitch, uint8_t velocity) {
         container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::NoteOn).status | channel), pitch, velocity};
@@ -496,28 +509,30 @@ public:
 
     [[nodiscard]] uint32_t get_time() const { return time; };
 
+    [[nodiscard]] uint8_t get_status_byte() const { return statusByte; };
+
     [[nodiscard]] const container::SmallBytes &get_data() const { return data; };
 
-    [[nodiscard]] MessageType get_type() const { return status_to_message_type(data[0]); };
+    [[nodiscard]] MessageType get_type() const { return status_to_message_type(statusByte); };
 
     [[nodiscard]] std::string get_type_string() const {
         return message_type_to_string(this->get_type());
-    }
+    };
 
-    [[nodiscard]] uint8_t get_channel() const { return data[0] & 0x0F; };
+    [[nodiscard]] uint8_t get_channel() const { return statusByte & 0x0F; };
 
-    [[nodiscard]] uint8_t get_pitch() const { return this->data[1]; };
+    [[nodiscard]] uint8_t get_pitch() const { return data[0]; };
 
-    [[nodiscard]] uint8_t get_velocity() const { return data[2]; };
+    [[nodiscard]] uint8_t get_velocity() const { return data[1]; };
 
-    [[nodiscard]] uint8_t get_control_number() const { return data[1]; };
+    [[nodiscard]] uint8_t get_control_number() const { return data[0]; };
 
-    [[nodiscard]] uint8_t get_control_value() const { return data[2]; };
+    [[nodiscard]] uint8_t get_control_value() const { return data[1]; };
 
-    [[nodiscard]] uint8_t get_program() const { return data[1]; };
+    [[nodiscard]] uint8_t get_program() const { return data[0]; };
 
     [[nodiscard]] MetaType get_meta_type() const {
-        return status_to_meta_type(this->data[1]);
+        return status_to_meta_type(this->data[0]);
     };
 
     [[nodiscard]] std::string get_meta_type_string() const {
@@ -527,39 +542,39 @@ public:
     [[nodiscard]] container::SmallBytes get_meta_value() const {
         // Clang-Tidy: Avoid repeating the return type from the declaration;
         // use a braced initializer list instead
-        return {this->data.begin() + 3, this->data.end()};
+        return {this->data.begin() + 2, this->data.end()};
     };
 
     [[nodiscard]] uint32_t get_tempo() const {
-        return utils::read_msb_bytes(const_cast<uint8_t *>(this->data.data()) + 3, 3);
+        return utils::read_msb_bytes(const_cast<uint8_t *>(this->data.data()) + 2, 3);
     };
 
     [[nodiscard]] message::TimeSignature get_time_signature() const {
         // Clang-Tidy: Avoid repeating the return type from the declaration;
         // use a braced initializer list instead
-        return {data[3], static_cast<uint8_t>(1 << data[4])};
+        return {data[2], static_cast<uint8_t>(1 << data[3])};
     };
 
     [[nodiscard]] message::KeySignature get_key_signature() const {
         // Clang-Tidy: Avoid repeating the return type from the declaration;
         // use a braced initializer list instead
-        return {static_cast<int8_t>(data[3]), data[4]};
+        return {static_cast<int8_t>(data[2]), data[3]};
     }
 
     [[nodiscard]] int16_t get_pitch_bend() const {
-        return static_cast<int16_t>(data[1] | (data[2] << 7) + MIN_PITCHBEND);
+        return static_cast<int16_t>(data[0] | (data[1] << 7) + MIN_PITCHBEND);
     };
 
     [[nodiscard]] uint16_t get_song_position_pointer() const {
-        return static_cast<uint16_t>(data[1] | (data[2] << 7));
+        return static_cast<uint16_t>(data[0] | (data[1] << 7));
     };
 
     [[nodiscard]] uint8_t get_frame_type() const {
-        return data[1] >> 4;
+        return data[0] >> 4;
     };
 
     [[nodiscard]] uint8_t get_frame_value() const {
-        return data[1] & 0x0F;
+        return data[0] & 0x0F;
     };
 
 };
@@ -767,7 +782,7 @@ public:
                 return m1.time < m2.time && m1.index < m2.index;
             });
 
-        container::Bytes trackBytes(dataLen + 4 * msgHeaders.size() + 8);
+        container::Bytes trackBytes(dataLen + 5 * msgHeaders.size() + 8);
 
         uint8_t* cursor = trackBytes.data();
         uint32_t prevTime = 0;
@@ -778,25 +793,30 @@ public:
         cursor += 8;
         for(int i = 0; i < msgHeaders.size(); ++i) {
             const message::Message &thisMsg = this->messages[msgHeaders[i].index];
-            utils::write_variable_length(cursor, thisMsg.get_time() - prevTime);
-            prevTime = thisMsg.get_time();
+            uint32_t curTime = thisMsg.get_time();
+            uint8_t curStatus = thisMsg.get_status_byte();
 
-            // Running status
-            if(!(thisMsg.get_data()[0] == 0xFF ||
-                thisMsg.get_data()[0] == 0xF0 ||
-                thisMsg.get_data()[0] == 0xF7) &&
-                thisMsg.get_data()[0] == prevStatus) {
-                std::copy(thisMsg.get_data().begin() + 1, thisMsg.get_data().end(), cursor);
-                cursor += thisMsg.get_data().size() - 1;
+            utils::write_variable_length(cursor, curTime - prevTime);
+            prevTime = curTime;
+
+            // Not running status, write status byte
+            if(curStatus == 0xFF ||
+                curStatus == 0xF0 ||
+                curStatus == 0xF7 ||
+                curStatus != prevStatus) {
+                *cursor = curStatus;
+                ++cursor;
             }
-            else {
-                std::copy(thisMsg.get_data().begin(), thisMsg.get_data().end(), cursor);
-                cursor += thisMsg.get_data().size();
-            }
-            prevStatus = thisMsg.get_data()[0];
+            // Write data bytes
+            std::copy(thisMsg.get_data().begin(), thisMsg.get_data().end(), cursor);
+            cursor += thisMsg.get_data().size();
+
+            prevStatus = curStatus;
         }
         // Write EOT
         utils::write_variable_length(cursor, 1);
+        *cursor = _eot.get_status_byte();
+        ++cursor;
         std::copy(_eot.get_data().begin(), _eot.get_data().end(), cursor);
         cursor += _eot.get_data().size();
 
