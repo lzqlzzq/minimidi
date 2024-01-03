@@ -87,7 +87,7 @@ inline void write_msb_bytes(uint8_t *buffer, size_t value, size_t length) {
     }
 };
 
-inline uint8_t variable_length_bytes(uint32_t num) {
+inline uint8_t calc_variable_length(uint32_t num) {
     if(num < 0x80)
         return 1;
     else if(num < 0x4000)
@@ -99,7 +99,7 @@ inline uint8_t variable_length_bytes(uint32_t num) {
 };
 
 inline void write_variable_length(uint8_t *&buffer, uint32_t num) {
-    uint8_t byteNum = variable_length_bytes(num);
+    uint8_t byteNum = calc_variable_length(num);
 
     for(auto i = 0; i < byteNum - 1; ++i) {
         *buffer = (num >> (7 * (byteNum - i - 1))) | 0x80;
@@ -110,7 +110,7 @@ inline void write_variable_length(uint8_t *&buffer, uint32_t num) {
 };
 
 inline container::SmallBytes make_variable_length(uint32_t num) {
-    uint8_t byteNum = variable_length_bytes(num);
+    uint8_t byteNum = calc_variable_length(num);
 
     container::SmallBytes result(byteNum);
     uint8_t* cursor = const_cast<uint8_t*>(result.data());
@@ -325,90 +325,115 @@ public:
         time(time), statusByte(*begin), data(begin + 1, begin + size) {};
 
     static Message NoteOn(uint32_t time, uint8_t channel, uint8_t pitch, uint8_t velocity) {
-        container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::NoteOn).status | channel), pitch, velocity};
-        return {time, std::move(data)};
+        return { time,
+            static_cast<uint8_t>(message_attr(MessageType::NoteOn).status | channel),
+            container::SmallBytes{pitch, velocity}};
     };
 
     static Message NoteOff(uint32_t time, uint8_t channel, uint8_t pitch, uint8_t velocity) {
-        // container::SmallBytes data = { 0x80 | channel, pitch, velocity};
-        container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::NoteOff).status | channel), pitch, velocity};
-        return {time, std::move(data)};
+        return { time,
+            static_cast<uint8_t>(message_attr(MessageType::NoteOff).status | channel),
+            container::SmallBytes{pitch, velocity}};
     };
 
     static Message ControlChange(uint32_t time, uint8_t channel, uint8_t controlNumber, uint8_t controlValue) {
-        // container::SmallBytes data = { 0xB0 | channel, controlNumber, controlValue};
-        container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::ControlChange).status | channel), controlNumber, controlValue};
-        return {time, std::move(data)};
+        return { time,
+            static_cast<uint8_t>(message_attr(MessageType::ControlChange).status | channel),
+            container::SmallBytes{controlNumber, controlValue}};
     };
 
     static Message ProgramChange(uint32_t time, uint8_t channel, uint8_t program) {
-        // container::SmallBytes data = { 0xC0 | channel, program};
-        container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::ProgramChange).status | channel), program};
-        return {time, std::move(data)};
+        return { time,
+            static_cast<uint8_t>(message_attr(MessageType::ProgramChange).status | channel),
+            container::SmallBytes{program}};
     };
 
     static Message SysEx(uint32_t time, const container::SmallBytes &data) {
-        container::SmallBytes lenBytes = utils::make_variable_length(data.size());
-        container::SmallBytes buffer(data.size() + lenBytes.size() + 2);
+        size_t lenBytesNum = utils::calc_variable_length(data.size());
+        container::SmallBytes buffer(data.size() + lenBytesNum + 1);
 
-        buffer[0] = message_attr(MessageType::SysExStart).status; //0xF0;
-        std::copy(lenBytes.begin(), lenBytes.end(), buffer.begin() + 1);
-        std::copy(data.begin(), data.end(), buffer.begin() + 1 + lenBytes.size());
-        buffer[buffer.size() - 1] = message_attr(MessageType::SysExEnd).status; //0xF7;
-        return {time, std::move(buffer)};
+        // Write length bytes
+        uint8_t *cursor = const_cast<uint8_t*>(buffer.data());
+        utils::write_variable_length(cursor, data.size());
+
+        // Write data
+        std::copy(data.begin(), data.end(), cursor);
+
+        // Write SysExEnd
+        buffer[buffer.size() - 1] = message_attr(MessageType::SysExEnd).status; // 0xF7;
+
+        return { time,
+            message_attr(MessageType::SysExStart).status, // 0xF0
+            std::move(buffer)};
     };
 
     static Message SongPositionPointer(uint32_t time, uint16_t position) {
         // the type of position is uint14_t
-        container::SmallBytes data = { 
-            message_attr(MessageType::SongPositionPointer).status, 
-            static_cast<uint8_t>(position & 0x7F), 
-            static_cast<uint8_t>(position >> 7)
+        return { time,
+            message_attr(MessageType::SongPositionPointer).status,
+            container::SmallBytes{ 
+                static_cast<uint8_t>(position & 0x7F), 
+                static_cast<uint8_t>(position >> 7)
+            }
         };
-        return {time, std::move(data)};
     };
 
     static Message PitchBend(uint32_t time, uint8_t channel, int16_t value ) {
         value -= MIN_PITCHBEND;
-        container::SmallBytes data = { 
-            // 0xE0 | channel, 
+        return { time,
             static_cast<uint8_t>(message_attr(MessageType::PitchBend).status | channel),
-            static_cast<uint8_t>(value & 0x7F), 
-            static_cast<uint8_t>(value >> 7)
+            container::SmallBytes{
+                static_cast<uint8_t>(value & 0x7F), 
+                static_cast<uint8_t>(value >> 7)
+           }
         };
-        return {time, std::move(data)};
     };
 
     static Message QuarterFrame(uint32_t time, uint8_t type, uint8_t value) {
-        container::SmallBytes data = { 
+        return { time,
             static_cast<uint8_t>(message_attr(MessageType::QuarterFrame).status),
-            static_cast<uint8_t>((type << 4) | value )
+            container::SmallBytes{
+                static_cast<uint8_t>((type << 4) | value )
+            }
         };
-        return {time, std::move(data)};
     };
 
     static Message Meta(uint32_t time, MetaType metaType, const container::SmallBytes &metaValue) {
-        container::SmallBytes lenBytes = utils::make_variable_length(metaValue.size());
-        container::SmallBytes data(metaValue.size() + lenBytes.size() + 2);
+        size_t lenBytesNum = utils::calc_variable_length(metaValue.size());
+        container::SmallBytes buffer(metaValue.size() + lenBytesNum + 1);
 
-        data[0] = message_attr(MessageType::Meta).status; //0xFF;
-        data[1] = static_cast<uint8_t>(metaType);
-        std::copy(lenBytes.begin(), lenBytes.end(), data.begin() + 2);
-        std::copy(metaValue.begin(), metaValue.end(), data.begin() + 2 + lenBytes.size());
+        // Write meta type
+        buffer[0] = static_cast<uint8_t>(metaType);
 
-        return {time, std::move(data)};
+        // Write meta length
+        uint8_t* cursor = const_cast<uint8_t*>(buffer.data()) + 1;
+        utils::write_variable_length(cursor, metaValue.size());
+
+        // Write meta value
+        std::copy(metaValue.begin(), metaValue.end(), cursor);
+
+        return {time,
+            message_attr(MessageType::Meta).status, //0xFF;
+            std::move(buffer)};
     };
 
     static Message Meta(uint32_t time, MetaType metaType, const std::string &metaValue) {
-        container::SmallBytes lenBytes = utils::make_variable_length(metaValue.size());
-        container::SmallBytes data(metaValue.size() + lenBytes.size() + 2);
+        size_t lenBytesNum = utils::calc_variable_length(metaValue.size());
+        container::SmallBytes buffer(metaValue.size() + lenBytesNum + 1);
 
-        data[0] = message_attr(MessageType::Meta).status; //0xFF;
-        data[1] = static_cast<uint8_t>(metaType);
-        std::copy(lenBytes.begin(), lenBytes.end(), data.begin() + 2);
-        std::copy(metaValue.begin(), metaValue.end(), data.begin() + 2 + lenBytes.size());
+        // Write meta type
+        buffer[0] = static_cast<uint8_t>(metaType);
 
-        return {time, std::move(data)};
+        // Write meta length
+        uint8_t* cursor = const_cast<uint8_t*>(buffer.data()) + 1;
+        utils::write_variable_length(cursor, metaValue.size());
+
+        // Write meta value
+        std::copy(metaValue.begin(), metaValue.end(), cursor);
+
+        return {time,
+            message_attr(MessageType::Meta).status, //0xFF;
+            std::move(buffer)};
     };
 
     static Message Text(const uint32_t time, const std::string &text) {
@@ -436,72 +461,78 @@ public:
     };
 
     static Message MIDIChannelPrefix(const uint32_t time, const uint8_t channel) {
-        container::SmallBytes data = { 
-            message_attr(MessageType::Meta).status, //0xFF, 
+        return {time,
+            message_attr(MessageType::Meta).status, //0xFF,
+            container::SmallBytes{
             static_cast<uint8_t>(message::MetaType::MIDIChannelPrefix), //0x20, 
             static_cast<uint8_t>(1), 
             channel
+            }
         };
-        return {time, std::move(data)};
     };
 
     static Message EndOfTrack(const uint32_t time) {
-        container::SmallBytes data = { 
-            message_attr(MessageType::Meta).status, //0xFF, 
-            static_cast<uint8_t>(message::MetaType::EndOfTrack), //0x2F, 
-            static_cast<uint8_t>(0)
+        return {time,
+            message_attr(MessageType::Meta).status, //0xFF,
+            container::SmallBytes{
+                static_cast<uint8_t>(message::MetaType::EndOfTrack), //0x2F, 
+                static_cast<uint8_t>(0)
+            }
         };
-        return {time, std::move(data)};
     };
 
     static Message SetTempo(const uint32_t time, const uint32_t tempo) {
-        container::SmallBytes data = { 
-            message_attr(MessageType::Meta).status, //0xFF, 
-            static_cast<uint8_t>(message::MetaType::SetTempo), //0x51, 
-            static_cast<uint8_t>(3), 
-            static_cast<uint8_t>((tempo >> 16) & 0xFF), 
-            static_cast<uint8_t>((tempo >> 8) & 0xFF), 
-            static_cast<uint8_t>(tempo & 0xFF)
+        return {time,
+            message_attr(MessageType::Meta).status, //0xFF,
+            container::SmallBytes{
+                static_cast<uint8_t>(message::MetaType::SetTempo), //0x51,
+                static_cast<uint8_t>(3),
+                static_cast<uint8_t>((tempo >> 16) & 0xFF),
+                static_cast<uint8_t>((tempo >> 8) & 0xFF),
+                static_cast<uint8_t>(tempo & 0xFF)
+            }
         };
-        return {time, std::move(data)};
     };
 
-    static Message SMPTEOffset(const uint32_t time, const uint8_t hour, const uint8_t minute,const  uint8_t second, const uint8_t frame, const uint8_t subframe) {
-        container::SmallBytes data = { 
-            message_attr(MessageType::Meta).status, //0xFF, 
-            static_cast<uint8_t>(message::MetaType::SMPTEOffset), //0x54, 
-            static_cast<uint8_t>(5), 
-            hour, 
-            minute, 
-            second, 
-            frame, 
-            subframe
+    static Message SMPTEOffset(const uint32_t time, const uint8_t hour, const uint8_t minute,const uint8_t second, const uint8_t frame, const uint8_t subframe) {
+        return {time,
+            message_attr(MessageType::Meta).status, //0xFF,
+            container::SmallBytes{
+                static_cast<uint8_t>(message::MetaType::SMPTEOffset), //0x54, 
+                static_cast<uint8_t>(5), 
+                hour, 
+                minute, 
+                second, 
+                frame, 
+                subframe
+            }
         };
-        return {time, std::move(data)};
     };
 
     static Message TimeSignature(const uint32_t time, const uint8_t numerator, const uint8_t denominator) {
-        container::SmallBytes data = { 
-            message_attr(MessageType::Meta).status, //0xFF, 
-            static_cast<uint8_t>(message::MetaType::TimeSignature), //0x58, 
-            static_cast<uint8_t>(4), 
-            numerator, 
-            static_cast<uint8_t>(std::log2(denominator)),
-            static_cast<uint8_t>(0x18), 
-            static_cast<uint8_t>(0x08)
+        return {time,
+            message_attr(MessageType::Meta).status, //0xFF,
+            container::SmallBytes{
+                static_cast<uint8_t>(message::MetaType::TimeSignature), //0x58, 
+                static_cast<uint8_t>(4), 
+                numerator, 
+                static_cast<uint8_t>(std::log2(denominator)),
+                static_cast<uint8_t>(0x18), 
+                static_cast<uint8_t>(0x08)
+            }
         };
-        return {time, std::move(data)};
     };
 
     static Message KeySignature(const uint32_t time, const int8_t key, const uint8_t tonality) {
-        container::SmallBytes data = { 
-            message_attr(MessageType::Meta).status, //0xFF, 
-            static_cast<uint8_t>(message::MetaType::KeySignature), //0x59, 
-            static_cast<uint8_t>(2), 
-            static_cast<uint8_t>(key), 
-            tonality
+        return {time,
+            message_attr(MessageType::Meta).status, //0xFF,
+            container::SmallBytes{
+                static_cast<uint8_t>(message::MetaType::KeySignature), //0x59, 
+                static_cast<uint8_t>(2), 
+                static_cast<uint8_t>(key), 
+                tonality
+            }
         };
-        return {time, std::move(data)};
     };
 
     [[nodiscard]] uint32_t get_time() const { return time; };
