@@ -296,15 +296,23 @@ class Message {
     container::SmallBytes data;
 
 public:
-    Message(uint32_t time, const container::SmallBytes &data) {
+    Message(const uint32_t time, const container::SmallBytes &data) {
         this->time = time;
         this->data = data;
     };
 
-    Message(uint32_t time, container::SmallBytes &&data) {
+    Message(const uint32_t time, container::SmallBytes &&data) {
         this->time = time;
         this->data = std::move(data);
     };
+
+    Message(const uint32_t time, const uint8_t *begin, const size_t size):
+        time(time), data(begin, begin + size) {};
+
+    Message(const uint32_t time, const uint8_t statusCode, const uint8_t *begin, const size_t size):
+        time(time), data(begin - 1, begin + size - 1) {
+        data[0] = statusCode;
+    }
 
     static Message NoteOn(uint32_t time, uint8_t channel, uint8_t pitch, uint8_t velocity) {
         container::SmallBytes data = {static_cast<uint8_t>(message_attr(MessageType::NoteOn).status | channel), pitch, velocity};
@@ -662,18 +670,14 @@ public:
 
         while (cursor < bufferEnd) {
             tickOffset += utils::read_variable_length(cursor);
-            container::SmallBytes messageData;
 
             // Running status
             if ((*cursor) < 0x80) {
-                messageData = container::SmallBytes(prevEventLen);
 
                 if (!prevEventLen)
                     throw std::ios_base::failure("Corrupted MIDI File.");
 
-                messageData[0] = prevStatusCode;
-                std::copy(cursor, cursor + prevEventLen - 1, messageData.begin() + 1);
-                cursor += prevEventLen - 1;
+                messages.emplace_back(tickOffset, prevStatusCode, cursor, prevEventLen);
             }
             // Meta message
             else if ((*cursor) == 0xFF) {
@@ -685,14 +689,10 @@ public:
                 if (prevBuffer + prevEventLen > bufferEnd)
                     throw std::ios_base::failure("Unexpected EOF of Meta Event!");
 
-                messageData = container::SmallBytes(prevBuffer, prevBuffer + prevEventLen);
-
+                messages.emplace_back(tickOffset, prevBuffer, prevEventLen);
                 if (message::status_to_meta_type(*(prevBuffer + 1)) == message::MetaType::EndOfTrack) {
-                    messages.emplace_back(tickOffset,
-                        std::move(messageData));
                     break;
                 }
-
                 cursor += prevEventLen - (cursor - prevBuffer);
             }
             // SysEx message
@@ -705,7 +705,7 @@ public:
                 if (prevBuffer + prevEventLen > bufferEnd)
                     throw std::ios_base::failure("Unexpected EOF of SysEx Event!");
 
-                messageData = container::SmallBytes(prevBuffer, prevBuffer + prevEventLen);
+                messages.emplace_back(tickOffset, prevBuffer, prevEventLen);
                 cursor += prevEventLen - (cursor - prevBuffer);
             }
             // Channel message or system common message
@@ -713,7 +713,7 @@ public:
                 prevStatusCode = (*cursor);
                 prevEventLen = message::message_attr(message::status_to_message_type(*cursor)).length;
 
-                messageData = container::SmallBytes(cursor, cursor + prevEventLen);
+                messages.emplace_back(tickOffset, cursor, prevEventLen);
                 cursor += prevEventLen;
             }
 
@@ -721,8 +721,6 @@ public:
                 throw std::ios_base::failure("Unexpected EOF in track.");
             }
 
-            messages.emplace_back(tickOffset,
-                std::move(messageData));
         }
     };
 
