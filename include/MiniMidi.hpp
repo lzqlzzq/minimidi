@@ -319,7 +319,7 @@ public:
     };
 
     Message(const uint32_t time, const uint8_t statusByte, const uint8_t *begin, const size_t size):
-        time(time), statusByte(statusByte), data(begin + 1, begin + size) {};
+        time(time), statusByte(statusByte), data(begin, begin + size) {};
 
     Message(const uint32_t time, const uint8_t *begin, const size_t size):
         time(time), statusByte(*begin), data(begin + 1, begin + size) {};
@@ -689,7 +689,7 @@ public:
                 if (!prevEventLen)
                     throw std::ios_base::failure("Corrupted MIDI File.");
 
-                messages.emplace_back(tickOffset, prevStatusCode, cursor, prevEventLen);
+                messages.emplace_back(tickOffset, prevStatusCode, cursor, prevEventLen - 1);
             }
             // Meta message
             else if ((*cursor) == 0xFF) {
