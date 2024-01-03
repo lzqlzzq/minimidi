@@ -204,11 +204,8 @@ inline const MessageAttr &message_attr(const MessageType &messageType) {
 };
 
 inline constexpr std::array<MessageType, 256> _generate_message_type_table() {
-    std::array<MessageType, 256> LUT;
-    for (int i = 0; i < 256; ++i) {
-        LUT[i] = MessageType::Unknown;
-    }
-
+    std::array<MessageType, 256> LUT{};
+    for(auto &type : LUT) type = MessageType::Unknown;
     for(const auto &msg_attr : MESSAGE_ATTRS) {
         if(msg_attr.status < 0xF0)
             for(auto i = 0; i < 0x10; i++)
@@ -244,7 +241,7 @@ inline std::string meta_type_to_string(const MetaType &metaType) {
 };
 
 inline constexpr std::array<MetaType, 256> _generate_meta_type_table() {
-    std::array<MetaType, 256> LUT;
+    std::array<MetaType, 256> LUT{};
     for(auto i = 0; i < 256; i++) {
         switch(i) {
             #define MIDI_META_TYPE_MEMBER(type, status) \
@@ -763,6 +760,7 @@ public:
         struct SortHelper {
             uint32_t time;
             size_t index;
+            SortHelper(const uint32_t time, const size_t index): time(time), index(index) {};
         };
         std::vector<SortHelper> msgHeaders;
         msgHeaders.reserve(this->messages.size());
