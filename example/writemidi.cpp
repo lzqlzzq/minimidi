@@ -18,8 +18,8 @@ int main(int argc, char *argv[]) {
         string target_dir = string(argv[1]);
 
         track::Track track1;
-        track1.messages.emplace_back(message::Message::SetTempo(0, 400000));
-        track1.messages.emplace_back(message::Message::TimeSignature(0, 4, 2));
+        track1.messages.emplace_back(message::Message::SetTempo(0, 400000));  // (time, ms_per_quarter)
+        track1.messages.emplace_back(message::Message::TimeSignature(0, 4, 2));  // (time, denominator, numerator)
 
         std::cout << "track1:\n" << track1.to_bytes() << std::endl;
         
