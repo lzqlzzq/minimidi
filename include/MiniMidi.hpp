@@ -18,7 +18,6 @@
 #include<iomanip>
 #include<numeric>
 #include<cmath>
-#include<tuple>
 #include<functional>
 #include"svector.h"
 
@@ -746,7 +745,10 @@ public:
         static const message::Message _eot = message::Message::EndOfTrack(0);
 
         // (time, index)
-        typedef std::tuple<uint32_t, size_t> SortHelper;
+        struct SortHelper {
+            uint32_t time;
+            size_t index;
+        };
         std::vector<SortHelper> msgHeaders;
         msgHeaders.reserve(this->messages.size());
         size_t dataLen = 0;
@@ -761,7 +763,9 @@ public:
 
         std::stable_sort(msgHeaders.begin(),
             msgHeaders.end(),
-            std::less<SortHelper>());
+            [](const SortHelper &m1, const SortHelper &m2) {
+                return m1.time < m2.time && m1.index < m2.index;
+            });
 
         container::Bytes trackBytes(dataLen + 4 * msgHeaders.size() + 8);
 
@@ -773,7 +777,7 @@ public:
         std::copy(MTRK.begin(), MTRK.end(), cursor);
         cursor += 8;
         for(int i = 0; i < msgHeaders.size(); ++i) {
-            const message::Message &thisMsg = this->messages[std::get<1>(msgHeaders[i])];
+            const message::Message &thisMsg = this->messages[msgHeaders[i].index];
             utils::write_variable_length(cursor, thisMsg.get_time() - prevTime);
             prevTime = thisMsg.get_time();
 
