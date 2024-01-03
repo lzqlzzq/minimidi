@@ -205,7 +205,6 @@ inline const MessageAttr &message_attr(const MessageType &messageType) {
 
 inline constexpr std::array<MessageType, 256> _generate_message_type_table() {
     std::array<MessageType, 256> LUT{};
-    // LUT.fill(MessageType::Unknown);
     for(auto &type : LUT) type = MessageType::Unknown;
     for(const auto &msg_attr : MESSAGE_ATTRS) {
         if(msg_attr.status < 0xF0)
@@ -782,6 +781,7 @@ public:
 
             // Running status
             if(!(thisMsg.get_data()[0] == 0xFF ||
+                thisMsg.get_data()[0] == 0xF0 ||
                 thisMsg.get_data()[0] == 0xF7) &&
                 thisMsg.get_data()[0] == prevStatus) {
                 std::copy(thisMsg.get_data().begin() + 1, thisMsg.get_data().end(), cursor);
