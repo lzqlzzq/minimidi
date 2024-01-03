@@ -14,7 +14,7 @@
 #include<fstream>
 #include<algorithm>
 #include<functional>
-#include"MiniMidi.hpp"
+#include"minimidi/MiniMidi.hpp"
 
 using namespace std;
 using namespace minimidi;

@@ -4,14 +4,16 @@ set(CMAKE_CXX_STANDARD 17)
 
 option(BUILD_EXAMPLES "Build examples" OFF)
 
-# for using minimidi, you could include ./include directory derectly
-# without concerning this CMakeLists.txt
-# this is for developing minimidi itself
-include_directories(include)
+add_library(minimidi INTERFACE)
+target_include_directories(minimidi INTERFACE include)
 
 if(BUILD_EXAMPLES)
     add_executable(dumpmidi example/dumpmidi.cpp)
+    target_link_libraries(dumpmidi PRIVATE minimidi)
     add_executable(parsemidi example/parsemidi.cpp)
+    target_link_libraries(parsemidi PRIVATE minimidi)
     add_executable(redumpmidi example/redumpmidi.cpp)
+    target_link_libraries(redumpmidi PRIVATE minimidi)
     add_executable(writemidi example/writemidi.cpp)
+    target_link_libraries(writemidi PRIVATE minimidi)
 endif()

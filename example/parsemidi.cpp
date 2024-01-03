@@ -8,7 +8,7 @@
 
 #include<iostream>
 #include<string>
-#include"MiniMidi.hpp"
+#include"minimidi/MiniMidi.hpp"
 
 
 int main(int argc, char *argv[]) {
