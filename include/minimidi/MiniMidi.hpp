@@ -713,9 +713,10 @@ public:
 
         while (cursor < bufferEnd) {
             tickOffset += utils::read_variable_length(cursor);
+            uint8_t curStatusCode = *cursor;
 
             // Running status
-            if ((*cursor) < 0x80) {
+            if (curStatusCode < 0x80) {
 
                 if (!prevEventLen)
                     throw std::ios_base::failure("Corrupted MIDI File.");
@@ -723,8 +724,8 @@ public:
                 messages.emplace_back(tickOffset, prevStatusCode, cursor, prevEventLen - 1);
             }
             // Meta message
-            else if ((*cursor) == 0xFF) {
-                prevStatusCode = (*cursor);
+            else if (curStatusCode == 0xFF) {
+                prevStatusCode = curStatusCode;
                 const uint8_t *prevBuffer = cursor;
                 cursor += 2;
                 prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
@@ -739,8 +740,8 @@ public:
                 cursor += prevEventLen - (cursor - prevBuffer);
             }
             // SysEx message
-            else if ((*cursor) == 0xF0) {
-                prevStatusCode = (*cursor);
+            else if (curStatusCode == 0xF0) {
+                prevStatusCode = curStatusCode;
                 const uint8_t *prevBuffer = cursor;
                 cursor += 1;
                 prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
@@ -753,8 +754,8 @@ public:
             }
             // Channel message or system common message
             else {
-                prevStatusCode = (*cursor);
-                prevEventLen = message::message_attr(message::status_to_message_type(*cursor)).length;
+                prevStatusCode = curStatusCode;
+                prevEventLen = message::message_attr(message::status_to_message_type(curStatusCode)).length;
 
                 messages.emplace_back(tickOffset, cursor, prevEventLen);
                 cursor += prevEventLen;
