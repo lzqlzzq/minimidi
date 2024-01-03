@@ -18,6 +18,7 @@
 #include<iomanip>
 #include<numeric>
 #include<cmath>
+#include<tuple>
 #include<functional>
 #include"svector.h"
 
@@ -740,53 +741,46 @@ public:
         return this->messages.size();
     };
 
-
     [[nodiscard]] container::Bytes to_bytes() const {
         // Prepare EOT
         static const message::Message _eot = message::Message::EndOfTrack(0);
 
-        struct SortHelper {
-            uint32_t time;
-            size_t index;
-        };
+        // (time, index)
+        typedef std::tuple<uint32_t, size_t> SortHelper;
         std::vector<SortHelper> msgHeaders;
         msgHeaders.reserve(this->messages.size());
+        size_t dataLen = 0;
 
-        for (int i = 0; i < this->messages.size(); ++i)
-        {
+        for (int i = 0; i < this->messages.size(); ++i) {
             if(this->messages[i].get_type() != message::MessageType::Meta ||
-                this->messages[i].get_meta_type() != message::MetaType::EndOfTrack)
+                this->messages[i].get_meta_type() != message::MetaType::EndOfTrack) {
                 msgHeaders.emplace_back(this->messages[i].get_time(), i);
+                dataLen += this->messages[i].get_data().size();
+            }
         }
 
         std::stable_sort(msgHeaders.begin(),
             msgHeaders.end(),
-            [](const SortHelper& msg1, const SortHelper& msg2) {
-                return msg1.time < msg2.time;
-        });
+            std::less<SortHelper>());
 
-        std::vector<uint32_t> times(msgHeaders.size());
-        std::vector<size_t> dataLen(msgHeaders.size());
-        for(int i = 0; i < msgHeaders.size(); ++i) {
-            times[i] = msgHeaders[i].time;
-            dataLen[i] = this->messages[msgHeaders[i].index].get_data().size();
-        }
-        std::adjacent_difference(times.begin(), times.end(), times.begin());
-
-        container::Bytes trackBytes(std::reduce(dataLen.begin(), dataLen.end()) + 4 * msgHeaders.size() + 8);
+        container::Bytes trackBytes(dataLen + 4 * msgHeaders.size() + 8);
 
         uint8_t* cursor = trackBytes.data();
+        uint32_t prevTime = 0;
+        uint8_t prevStatus = 0x00;
+
+        // Write track chunk header
         std::copy(MTRK.begin(), MTRK.end(), cursor);
         cursor += 8;
-        uint8_t lastEventStatus = 0x00;
         for(int i = 0; i < msgHeaders.size(); ++i) {
-            const message::Message &thisMsg = this->messages[msgHeaders[i].index];
-            utils::write_variable_length(cursor, times[i]);
+            const message::Message &thisMsg = this->messages[std::get<1>(msgHeaders[i])];
+            utils::write_variable_length(cursor, thisMsg.get_time() - prevTime);
+            prevTime = thisMsg.get_time();
 
             // Running status
             if(!(thisMsg.get_data()[0] == 0xFF ||
                 thisMsg.get_data()[0] == 0xF7) &&
-                thisMsg.get_data()[0] == lastEventStatus) {
+                thisMsg.get_data()[0] == prevStatus) {
                 std::copy(thisMsg.get_data().begin() + 1, thisMsg.get_data().end(), cursor);
                 cursor += thisMsg.get_data().size() - 1;
             }
@@ -794,10 +788,10 @@ public:
                 std::copy(thisMsg.get_data().begin(), thisMsg.get_data().end(), cursor);
                 cursor += thisMsg.get_data().size();
             }
-            lastEventStatus = thisMsg.get_data()[0];
+            prevStatus = thisMsg.get_data()[0];
         }
         // Write EOT
-        utils::write_variable_length(cursor, times.back() + 1);
+        utils::write_variable_length(cursor, 1);
         std::copy(_eot.get_data().begin(), _eot.get_data().end(), cursor);
         cursor += _eot.get_data().size();
 
