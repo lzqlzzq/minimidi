@@ -783,6 +783,7 @@ public:
 
             // Running status
             if(!(thisMsg.get_data()[0] == 0xFF ||
+                thisMsg.get_data()[0] == 0xF0 ||
                 thisMsg.get_data()[0] == 0xF7) &&
                 thisMsg.get_data()[0] == prevStatus) {
                 std::copy(thisMsg.get_data().begin() + 1, thisMsg.get_data().end(), cursor);
