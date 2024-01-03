@@ -466,7 +466,7 @@ public:
             container::SmallBytes{
                 static_cast<uint8_t>(message::MetaType::MIDIChannelPrefix), //0x20,
                 static_cast<uint8_t>(1),
-            channel
+                channel
             }
         };
     };
