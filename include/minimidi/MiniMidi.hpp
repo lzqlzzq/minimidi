@@ -717,9 +717,11 @@ public:
 
             // Running status
             if (curStatusCode < 0x80) {
-
                 if (!prevEventLen)
-                    throw std::ios_base::failure("Corrupted MIDI File.");
+                    throw std::ios_base::failure("Unexpected running status!");
+
+                if (cursor + prevEventLen - 1 > bufferEnd)
+                    throw std::ios_base::failure("Unexpected EOF in running status!");
 
                 messages.emplace_back(tickOffset, prevStatusCode, cursor, prevEventLen - 1);
             }
@@ -727,44 +729,50 @@ public:
             else if (curStatusCode == 0xFF) {
                 prevStatusCode = curStatusCode;
                 const uint8_t *prevBuffer = cursor;
+
+                // Skip status byte and meta type byte
                 cursor += 2;
                 prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
 
                 if (prevBuffer + prevEventLen > bufferEnd)
-                    throw std::ios_base::failure("Unexpected EOF of Meta Event!");
+                    throw std::ios_base::failure("Unexpected EOF in Meta Event!");
 
                 messages.emplace_back(tickOffset, prevBuffer, prevEventLen);
-                if (message::status_to_meta_type(*(prevBuffer + 1)) == message::MetaType::EndOfTrack) {
+
+                if (messages.back().get_meta_type() == message::MetaType::EndOfTrack)
                     break;
-                }
-                cursor += prevEventLen - (cursor - prevBuffer);
+
+                cursor = prevBuffer + prevEventLen;
             }
             // SysEx message
             else if (curStatusCode == 0xF0) {
                 prevStatusCode = curStatusCode;
                 const uint8_t *prevBuffer = cursor;
+
+                // Skip status byte
                 cursor += 1;
                 prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
 
                 if (prevBuffer + prevEventLen > bufferEnd)
-                    throw std::ios_base::failure("Unexpected EOF of SysEx Event!");
+                    throw std::ios_base::failure("Unexpected EOF in SysEx Event!");
 
                 messages.emplace_back(tickOffset, prevBuffer, prevEventLen);
-                cursor += prevEventLen - (cursor - prevBuffer);
+                cursor = prevBuffer + prevEventLen;
             }
             // Channel message or system common message
             else {
                 prevStatusCode = curStatusCode;
                 prevEventLen = message::message_attr(message::status_to_message_type(curStatusCode)).length;
 
+                if (cursor + prevEventLen > bufferEnd)
+                    throw std::ios_base::failure("Unexpected EOF in MIDI Event!");
+
                 messages.emplace_back(tickOffset, cursor, prevEventLen);
                 cursor += prevEventLen;
             }
 
-            if (cursor > bufferEnd) {
+            if (cursor > bufferEnd)
                 throw std::ios_base::failure("Unexpected EOF in track.");
-            }
-
         }
     };
 
