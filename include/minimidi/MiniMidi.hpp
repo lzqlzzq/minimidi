@@ -815,10 +815,10 @@ public:
             }
         }
 
-        std::sort(msgHeaders.begin(),
+        std::stable_sort(msgHeaders.begin(),
             msgHeaders.end(),
             [](const SortHelper &m1, const SortHelper &m2) {
-                return m1.time < m2.time && m1.index < m2.index;
+                return m1.time < m2.time;
             });
 
         container::Bytes trackBytes(dataLen + 5 * msgHeaders.size() + 8);
