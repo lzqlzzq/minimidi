@@ -798,11 +798,7 @@ public:
         static const message::Message _eot = message::Message::EndOfTrack(0);
 
         // (time, index)
-        struct SortHelper {
-            uint32_t time;
-            size_t index;
-            SortHelper(const uint32_t time, const size_t index): time(time), index(index) {};
-        };
+        typedef std::pair<uint32_t, size_t> SortHelper;
         std::vector<SortHelper> msgHeaders;
         msgHeaders.reserve(this->messages.size());
         size_t dataLen = 0;
@@ -817,9 +813,7 @@ public:
 
         std::sort(msgHeaders.begin(),
             msgHeaders.end(),
-            [](const SortHelper &m1, const SortHelper &m2) {
-                return m1.time < m2.time || (m1.time == m2.time && m1.index < m2.index);
-            });
+            std::less<SortHelper>());
 
         container::Bytes trackBytes(dataLen + 5 * msgHeaders.size() + 8);
 
@@ -831,7 +825,7 @@ public:
         std::copy(MTRK.begin(), MTRK.end(), cursor);
         cursor += 8;
         for(int i = 0; i < msgHeaders.size(); ++i) {
-            const message::Message &thisMsg = this->messages[msgHeaders[i].index];
+            const message::Message &thisMsg = this->messages[msgHeaders[i].second];
             uint32_t curTime = thisMsg.get_time();
             uint8_t curStatus = thisMsg.get_status_byte();
 
