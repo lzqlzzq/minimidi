@@ -724,6 +724,7 @@ public:
                     throw std::ios_base::failure("Unexpected EOF in running status!");
 
                 messages.emplace_back(tickOffset, prevStatusCode, cursor, prevEventLen - 1);
+                cursor += prevEventLen - 1;
             }
             // Meta message
             else if (curStatusCode == 0xFF) {
