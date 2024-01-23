@@ -580,6 +580,23 @@ public:
         assign(first, last);
     }
 
+    svector(const T* first, const size_t size) {
+        if(size <= MinInlineCapacity) {
+            set_direct_and_size(size);
+            if constexpr (std::is_same_v<T, uint8_t> && MinInlineCapacity == 4) {
+                // special case for uint8_t and 4 elements, we can do a single copy
+                *reinterpret_cast<uint32_t*>(direct_data()) = *reinterpret_cast<const uint32_t*>(first);
+            } else {
+                std::uninitialized_copy(first, first + size, direct_data());
+            }
+        } else {
+            set_direct_and_size(0);
+            reserve(size);
+            std::uninitialized_copy(first, first + size, data());
+            set_size(size);
+        }
+    }
+
     svector(svector const& other)
         : svector() {
         auto s = other.size();
