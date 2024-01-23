@@ -717,12 +717,21 @@ public:
 
             // Running status
             if (curStatusCode < 0x80) {
-                if (!prevEventLen)
-                    throw std::ios_base::failure("Unexpected running status!");
-
-                if (cursor + prevEventLen - 1 > bufferEnd)
-                    throw std::ios_base::failure("Unexpected EOF in running status!");
-
+                if (!prevEventLen) {
+                    throw std::ios_base::failure(
+                        "MiniMidi: Unexpected running status! Get status code: "
+                        + std::to_string(curStatusCode)
+                        + " but previous event length is 0!"
+                    );
+                }
+                if (cursor + prevEventLen - 1 > bufferEnd) {
+                    throw std::ios_base::failure(
+                        "MiniMidi: Unexpected EOF in running status! Cursor would be "
+                        + std::to_string(cursor + prevEventLen - 1 - bufferEnd)
+                        + " bytes beyond the end of buffer with previous event length "
+                        + std::to_string(prevEventLen) + "!"
+                    );
+                }
                 messages.emplace_back(tickOffset, prevStatusCode, cursor, prevEventLen - 1);
                 cursor += prevEventLen - 1;
             }
@@ -735,9 +744,14 @@ public:
                 cursor += 2;
                 prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
 
-                if (prevBuffer + prevEventLen > bufferEnd)
-                    throw std::ios_base::failure("Unexpected EOF in Meta Event!");
-
+                if (prevBuffer + prevEventLen > bufferEnd) {
+                    throw std::ios_base::failure(
+                        "MiniMidi: Unexpected EOF in Meta Event! Cursor would be "
+                        + std::to_string(cursor + prevEventLen - bufferEnd)
+                        + " bytes beyond the end of buffer with previous event length "
+                        + std::to_string(prevEventLen) + "!"
+                    );
+                }
                 messages.emplace_back(tickOffset, prevBuffer, prevEventLen);
 
                 if (messages.back().get_meta_type() == message::MetaType::EndOfTrack)
@@ -754,9 +768,14 @@ public:
                 cursor += 1;
                 prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
 
-                if (prevBuffer + prevEventLen > bufferEnd)
-                    throw std::ios_base::failure("Unexpected EOF in SysEx Event!");
-
+                if (prevBuffer + prevEventLen > bufferEnd) {
+                    throw std::ios_base::failure(
+                        "MiniMidi: Unexpected EOF in SysEx Event! Cursor would be "
+                        + std::to_string(cursor + prevEventLen - bufferEnd)
+                        + " bytes beyond the end of buffer with previous event length "
+                        + std::to_string(prevEventLen) + "!"
+                    );
+                }
                 messages.emplace_back(tickOffset, prevBuffer, prevEventLen);
                 cursor = prevBuffer + prevEventLen;
             }
@@ -765,15 +784,25 @@ public:
                 prevStatusCode = curStatusCode;
                 prevEventLen = message::message_attr(message::status_to_message_type(curStatusCode)).length;
 
-                if (cursor + prevEventLen > bufferEnd)
-                    throw std::ios_base::failure("Unexpected EOF in MIDI Event!");
-
+                if (cursor + prevEventLen > bufferEnd) {
+                    throw std::ios_base::failure(
+                        "MiniMidi: Unexpected EOF in MIDI Event! Cursor would be "
+                        + std::to_string(cursor + prevEventLen - bufferEnd)
+                        + " bytes beyond the end of buffer with previous event length "
+                        + std::to_string(prevEventLen) + "!"
+                    );
+                }
                 messages.emplace_back(tickOffset, cursor, prevEventLen);
                 cursor += prevEventLen;
             }
 
-            if (cursor > bufferEnd)
-                throw std::ios_base::failure("Unexpected EOF in track.");
+            if (cursor > bufferEnd) {
+                throw std::ios_base::failure(
+                    "MiniMidi: Unexpected EOF in track! Cursor is "
+                    + std::to_string(cursor - bufferEnd)
+                    + " bytes beyond the end of buffer!"
+                );
+            }
         }
     };
 
@@ -906,7 +935,11 @@ inline MidiFormat read_midiformat(const uint16_t data) {
 #define MIDI_FORMAT_MEMBER(type, status) case status: return MidiFormat::type;
         MIDI_FORMAT
 #undef MIDI_FORMAT_MEMBER
-        default: throw std::ios_base::failure("Invaild midi format!");
+        default: throw std::ios_base::failure(
+            "MiniMidi: Invaild midi format ("
+            + std::to_string(data) + ")!"
+            + "1 for single track, 2 for multi track, 3 for multi song."
+        );
     }
 };
 
@@ -928,17 +961,21 @@ public:
     // MidiFile() = default;
 
     explicit MidiFile(const uint8_t* const data, const size_t size) {
-        if (size < 4)
-            throw std::ios_base::failure("Invaild midi file!");
-
+        if (size < 4) {
+            throw std::ios_base::failure("MiniMidi: Invaild midi file! File size is less than 4!");
+        }
         const uint8_t* cursor = data;
         const uint8_t* bufferEnd = cursor + size;
 
-        if (!(std::string(reinterpret_cast<const char*>(cursor), 4) == MTHD &&
-              utils::read_msb_bytes(cursor + 4, 4) == 6
-        ))
-            throw std::ios_base::failure("Invaild midi file!");
-
+        if (std::string(reinterpret_cast<const char*>(cursor), 4) != MTHD) {
+            throw std::ios_base::failure("MiniMidi: Invaild midi file! File header is not MThd!");
+        }
+        if (const auto chunkLen = utils::read_msb_bytes(cursor + 4, 4); chunkLen != 6) {
+            throw std::ios_base::failure(
+                "MiniMidi: Invaild midi file! The first chunk length is not 6, but "
+                + std::to_string(chunkLen) + "!"
+            );
+        }
         this->format = read_midiformat(utils::read_msb_bytes(cursor + 8, 2));
         const uint16_t trackNum = utils::read_msb_bytes(cursor + 10, 2);
         this->divisionType = ((*(cursor + 12)) & 0x80) >> 7;
@@ -951,16 +988,27 @@ public:
             while(std::string(reinterpret_cast<const char*>(cursor), 4) != track::MTRK) {
                 const size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
 
-                if(cursor + chunkLen + 8 > bufferEnd)
-                    throw std::ios_base::failure("Unexpected EOF in file!");
-
+                if(cursor + chunkLen + 8 > bufferEnd) {
+                    throw std::ios_base::failure(
+                        "MiniMidi: Unexpected EOF in file! Cursor is "
+                        + std::to_string(cursor + chunkLen + 8 - bufferEnd)
+                        + " bytes beyond the end of buffer with chunk length "
+                        + std::to_string(chunkLen) + "!"
+                    );
+                }
                 cursor += (8 + chunkLen);
             }
 
             const size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
 
-            if (cursor + chunkLen + 8 > bufferEnd)
-                throw std::ios_base::failure("Unexpected EOF in file!");
+            if (cursor + chunkLen + 8 > bufferEnd) {
+                throw std::ios_base::failure(
+                    "MiniMidi: Unexpected EOF in file! Cursor is "
+                    + std::to_string(cursor + chunkLen + 8 - bufferEnd)
+                    + " bytes beyond the end of buffer with chunk length "
+                    + std::to_string(chunkLen) + "!"
+                );
+            }
 
             this->tracks.emplace_back(cursor + 8, chunkLen);
             cursor += (8 + chunkLen);
@@ -1000,9 +1048,9 @@ public:
     static MidiFile from_file(const std::string &filepath) {
         FILE *filePtr = fopen(filepath.c_str(), "rb");
 
-        if (!filePtr)
-            throw std::ios_base::failure("Reading file failed!");
-
+        if (!filePtr) {
+            throw std::ios_base::failure("MiniMidi: Reading file failed (fopen)!");
+        }
         fseek(filePtr, 0, SEEK_END);
         const size_t fileLen = ftell(filePtr);
 
@@ -1044,9 +1092,9 @@ public:
     void write_file(const std::string &filepath) {
         FILE *filePtr = fopen(filepath.c_str(), "wb");
 
-        if (!filePtr)
-            throw std::ios_base::failure("Create file failed!");
-
+        if (!filePtr) {
+            throw std::ios_base::failure("MiniMidi: Create file failed (fopen)!");
+        }
         const container::Bytes midiBytes = this->to_bytes();
         fwrite(midiBytes.data(), 1, midiBytes.size(), filePtr);
         fclose(filePtr);
