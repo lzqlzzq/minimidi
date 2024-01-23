@@ -946,6 +946,10 @@ public:
             // Skip unknown chunk
             while(std::string(reinterpret_cast<const char*>(cursor), 4) != track::MTRK) {
                 const size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
+
+                if(cursor + chunkLen + 8 > bufferEnd)
+                    throw std::ios_base::failure("Unexpected EOF in file!");
+
                 cursor += (8 + chunkLen);
             }
 
