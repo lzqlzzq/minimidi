@@ -585,7 +585,8 @@ public:
             set_direct_and_size(size);
             if constexpr (std::is_same_v<T, uint8_t> && MinInlineCapacity == 4) {
                 // special case for uint8_t and 4 elements, we can do a single copy
-                *reinterpret_cast<uint32_t*>(direct_data()) = *reinterpret_cast<const uint32_t*>(first);
+                // reinterpret_cast is undefined behavior, use std::uninitialized_copy instead
+                std::uninitialized_copy(first, first + 4, direct_data());
             } else {
                 std::uninitialized_copy(first, first + size, direct_data());
             }
