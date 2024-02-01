@@ -27,7 +27,7 @@ namespace container {
 typedef std::vector<uint8_t> Bytes;
 
 // size of SmallBytes is totally 8 bytes on the stack (7 bytes + 1 byte for size)
-typedef ankerl::svector<uint8_t, 4> SmallBytes;
+typedef ankerl::svector<uint8_t, 7> SmallBytes;
 
 // to_string func for SmallBytes
 inline std::string to_string(const SmallBytes &data) {
