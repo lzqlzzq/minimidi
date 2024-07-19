@@ -739,22 +739,22 @@ public:
 
                 // Skip status byte and meta type byte
                 cursor += 2;
-                prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
+                auto eventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
 
-                if (prevBuffer + prevEventLen > bufferEnd) {
+                if (prevBuffer + eventLen > bufferEnd) {
                     throw std::ios_base::failure(
                         "MiniMidi: Unexpected EOF in Meta Event! Cursor would be "
-                        + std::to_string(cursor + prevEventLen - bufferEnd)
+                        + std::to_string(cursor + eventLen - bufferEnd)
                         + " bytes beyond the end of buffer with previous event length "
-                        + std::to_string(prevEventLen) + "!"
+                        + std::to_string(eventLen) + "!"
                     );
                 }
-                messages.emplace_back(tickOffset, prevBuffer, prevEventLen);
+                messages.emplace_back(tickOffset, prevBuffer, eventLen);
 
                 if (messages.back().get_meta_type() == message::MetaType::EndOfTrack)
                     break;
 
-                cursor = prevBuffer + prevEventLen;
+                cursor = prevBuffer + eventLen;
             }
             // SysEx message
             else if (curStatusCode == 0xF0) {
