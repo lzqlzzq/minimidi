@@ -733,7 +733,8 @@ public:
             }
             // Meta message
             else if (curStatusCode == 0xFF) {
-                prevStatusCode = curStatusCode;
+                // Meta message does not affect running status
+                // prevStatusCode = curStatusCode;
                 const uint8_t *prevBuffer = cursor;
 
                 // Skip status byte and meta type byte
