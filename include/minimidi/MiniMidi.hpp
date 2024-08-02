@@ -97,7 +97,7 @@ inline uint8_t calc_variable_length(uint32_t num) {
         return 4;
 };
 
-inline void write_variable_length(uint8_t *&buffer, uint32_t num) {
+inline void write_variable_length(uint8_t *&buffer, const uint32_t num) {
     const uint8_t byteNum = calc_variable_length(num);
 
     for(auto i = 0; i < byteNum - 1; ++i) {
@@ -107,6 +107,22 @@ inline void write_variable_length(uint8_t *&buffer, uint32_t num) {
     *buffer = num & 0x7F;
     ++buffer;
 };
+
+inline void write_variable_length(container::Bytes& bytes, const uint32_t num) {
+    const uint8_t byteNum = calc_variable_length(num);
+
+    for(auto i = 0; i < byteNum - 1; ++i) {
+        bytes.emplace_back((num >> (7 * (byteNum - i - 1))) | 0x80);
+    }
+    bytes.emplace_back(num & 0x7F);
+};
+
+template<typename Iter>
+void write_iter(container::Bytes& bytes, Iter begin, Iter end) {
+    for(;begin<end;++begin) {
+        bytes.emplace_back(*begin);
+    }
+}
 
 inline container::SmallBytes make_variable_length(uint32_t num) {
     const uint8_t byteNum = calc_variable_length(num);
@@ -293,6 +309,7 @@ class Message {
     container::SmallBytes data;
 
 public:
+    Message() = default;
     Message(const uint32_t time, const container::SmallBytes &data) {
         this->time = time;
         this->statusByte = data[0];
@@ -1085,6 +1102,64 @@ public:
 
         return midiBytes;
     };
+
+    container::Bytes to_bytes_sorted() {
+        container::Bytes bytes;
+        size_t approx_size = 32;
+        for(const auto &track: tracks) {
+            approx_size += track.message_num() * 5 + 16;
+        }
+        bytes.reserve(approx_size);
+
+        // Write MIDI HEAD
+        bytes.resize(14);
+        std::uninitialized_copy(MTHD.begin(), MTHD.end(), bytes.begin());
+        bytes[7] = 0x06;
+        bytes[9] = static_cast<uint8_t>(format);
+        utils::write_msb_bytes(bytes.data() + 10, tracks.size(), 2);
+        utils::write_msb_bytes(bytes.data() + 12, (divisionType << 15 | ticksPerQuarter), 2);
+
+        // Write Msgs for Each Track
+        for(const auto& track: tracks) {
+            size_t track_begin = bytes.size();
+            // Write Track HEAD
+            bytes.resize(bytes.size() + 8);
+            std::uninitialized_copy(track::MTRK.begin(), track::MTRK.end(), bytes.end() - 8);
+            // init prev
+            uint32_t prevTime = 0;
+            uint8_t prevStatus = 0x00;
+            for(const auto& msg: track.messages) {
+                const uint32_t curTime = msg.get_time();
+                const uint8_t curStatus = msg.get_status_byte();
+                // 1. write msg variable length
+                utils::write_variable_length(bytes, curTime - prevTime);
+                prevTime = curTime;
+                // 2. write running status
+                if((curStatus == 0xFF) | (curStatus == 0xF0) | (curStatus == 0xF7) | (curStatus != prevStatus)) {
+                    bytes.emplace_back(curStatus);
+                }
+                // 3. write msg btyes
+                const auto& msg_data = msg.get_data();
+                utils::write_iter(bytes, msg_data.cbegin(), msg_data.cend());
+                prevStatus = curStatus;
+            }
+            // Write EOT
+            const message::Message _eot = message::Message::EndOfTrack(0);
+            const auto & _eotData = _eot.get_data();
+            utils::write_variable_length(bytes, 1);
+            bytes.emplace_back(_eot.get_status_byte());
+            utils::write_iter(bytes, _eotData.cbegin(), _eotData.cend());
+
+            // Write track chunk length after MTRK
+            utils::write_msb_bytes(
+                bytes.data() + track_begin + 4,
+                bytes.size() - track_begin - 8,
+                4
+            );
+            // Track Writting Finished
+        }
+        return std::move(bytes);
+    }
 
     void write_file(const std::string &filepath) {
         FILE *filePtr = fopen(filepath.c_str(), "wb");
