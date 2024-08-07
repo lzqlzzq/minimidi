@@ -437,18 +437,19 @@ class svector {
 
     // precondition: all uninitialized
     void do_move_assign(svector&& other) {
-        if (!other.is_direct()) {
-            // take other's memory, even when empty
-            set_indirect(other.indirect());
-        } else {
-            auto* other_ptr = other.data<direction::direct>();
-            auto s = other.size<direction::direct>();
-            auto* other_end = other_ptr + s;
+        // if (!other.is_direct()) {
+        //     // take other's memory, even when empty
+        //     set_indirect(other.indirect());
+        // } else {
+        //     auto* other_ptr = other.data<direction::direct>();
+        //     auto s = other.size<direction::direct>();
+        //     auto* other_end = other_ptr + s;
 
-            std::uninitialized_move(other_ptr, other_end, data<direction::direct>());
-            std::destroy(other_ptr, other_end);
-            set_size(s);
-        }
+        //     std::uninitialized_move(other_ptr, other_end, data<direction::direct>());
+        //     std::destroy(other_ptr, other_end);
+        //     set_size(s);
+        // }
+        m_data = std::move(other.m_data);
         other.set_direct_and_size(0);
     }
 
