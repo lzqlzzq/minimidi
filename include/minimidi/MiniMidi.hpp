@@ -395,7 +395,7 @@ public:
     }
 
     [[nodiscard]] int16_t get_pitch_bend() const {
-        return static_cast<int16_t>(data[0] | (data[1] << 7) + MIN_PITCHBEND);
+        return (static_cast<int>(data[0]) | static_cast<int>(data[1] << 7)) - MIN_PITCHBEND;
     };
 
     [[nodiscard]] uint16_t get_song_position_pointer() const {
