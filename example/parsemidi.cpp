@@ -28,33 +28,9 @@ int main(int argc, char* argv[]) {
             std::vector<uint8_t> data(fileLen);
             fread(data.data(), 1, fileLen, filePtr);
             fclose(filePtr);
-            const auto N = 1000;
-            auto start = std::chrono::high_resolution_clock::now();
-            for (int i = 0; i < N; ++i) {
-                minimidi::file::MidiFile<> midifile(data.data(), data.size());
-            }
-            auto end = std::chrono::high_resolution_clock::now();
-            // show svector time
-            std::cout << "svector time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
 
-            start = std::chrono::high_resolution_clock::now();
-            for (int i = 0; i < N; ++i) {
-                minimidi::file::MidiFile<std::vector<uint8_t>> midifile(data.data(), data.size());
-            }
-            end = std::chrono::high_resolution_clock::now();
-            // show vector time
-            std::cout << "vector time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
-
-            start = std::chrono::high_resolution_clock::now();
-            for (int i = 0; i < N; ++i) {
-                minimidi::file::MidiFile<std::span<const uint8_t>> midifile(data.data(), data.size());
-            }
-            end = std::chrono::high_resolution_clock::now();
-            // show span time
-            std::cout << "span time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
-
-
-            // std::cout << minimidi::file::to_string(midifile) << std::endl;
+            const minimidi::file::MidiFile midifile{data};
+            std::cout << minimidi::to_string(midifile) << std::endl;
         } catch (const char* e) {
             std::cout << e << std::endl;
             exit(EXIT_FAILURE);

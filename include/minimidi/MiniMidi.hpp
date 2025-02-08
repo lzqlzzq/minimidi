@@ -20,6 +20,8 @@
 #include "svector.h"
 
 namespace minimidi {
+
+
 namespace container {
 typedef std::vector<uint8_t> Bytes;
 
@@ -55,28 +57,8 @@ template<typename T>
 concept InitializerList = requires(T a) {
     { T{0x00, 0x01, 0x02} };
 };
-
-// to_string func for SmallBytes
-template<BasicArr T>
-inline std::string to_string(const T& data) {
-    // show in hex
-    std::stringstream ss;
-    ss << std::hex << std::setfill('0') << "{ ";
-    for (auto& d : data) ss << std::setw(2) << static_cast<int>(d) << " ";
-    ss << "}" << std::dec;
-    return ss.str();
-};
-
 }   // namespace container
 
-// Here inline is used to avoid obeying the one definition rule (ODR).
-inline std::ostream& operator<<(std::ostream& out, const container::Bytes& data) {
-    out << std::hex << std::setfill('0') << "{ ";
-    for (auto& d : data) { out << "0x" << std::setw(2) << static_cast<int>(d) << " "; }
-    out << "}" << std::dec << std::endl;
-
-    return out;
-};
 
 namespace utils {
 inline uint32_t read_variable_length(const uint8_t*& buffer) {
@@ -215,11 +197,13 @@ enum class MetaType : uint8_t {
 #undef MIDI_META_TYPE_MEMBER
 };
 
+}   // namespace message
+
 // convert MessageType to string for printing
-inline std::string to_string(const MessageType& messageType) {
+inline std::string to_string(const message::MessageType& messageType) {
     switch (messageType) {
 #define MIDI_MESSAGE_TYPE_MEMBER(type, status, length) \
-    case MessageType::type: return #type;
+    case message::MessageType::type: return #type;
         MIDI_MESSAGE_TYPE
 #undef MIDI_MESSAGE_TYPE_MEMBER
     };
@@ -227,20 +211,17 @@ inline std::string to_string(const MessageType& messageType) {
 };
 
 // convert MetaType to string for printing
-inline std::string to_string(const MetaType& metaType) {
+inline std::string to_string(const message::MetaType& metaType) {
     switch (metaType) {
 #define MIDI_META_TYPE_MEMBER(type, status) \
-    case (MetaType::type): return #type;
+    case (message::MetaType::type): return #type;
         MIDI_META_TYPE
 #undef MIDI_META_TYPE_MEMBER
     };
-
     return "Unknown";
 };
 
 // Compile-time built lookup tables for message type and meta type
-}   // namespace message
-
 namespace lut {
 // Define 4 lut arrays for message type, status, length and meta status
 static constexpr std::array<uint8_t, 20> MESSAGE_STATUS = {
@@ -332,6 +313,7 @@ constexpr static uint8_t to_status_byte(const message::MessageType type, const u
 
 }   // namespace lut
 
+
 namespace message {
 
 
@@ -377,8 +359,9 @@ public:
         _data(other.data().begin(), other.data().end()), time(other.time),
         statusByte(other.statusByte){};
 
-    Message(const Message& other):
-        _data(other._data.begin(), other._data.end()), time(other.time), statusByte(other.statusByte) {};
+    Message(const Message& other) :
+        _data(other._data.begin(), other._data.end()), time(other.time),
+        statusByte(other.statusByte) {};
 
     // move constructor from another message with same data type
     Message(Message&& other) noexcept
@@ -578,7 +561,14 @@ struct Meta : Message<T> {
 
 
     [[nodiscard]] MetaType meta_type() const { return lut::to_meta_type(this->_data[0]); };
-    [[nodiscard]] T meta_value() const { return {this->_data.begin() + 2, this->_data.end()}; };
+    [[nodiscard]] T meta_value() const {
+        const uint8_t* cursor = this->_data.begin() + 1;
+        const auto variable_length = utils::read_variable_length(cursor);
+        if (cursor + variable_length > this->_data.end()) {
+            throw std::runtime_error("MiniMidi: Meta value is out of bound");
+        }
+        return {cursor, cursor + variable_length};
+    };
 };
 
 template<typename T = container::SmallBytes>
@@ -755,89 +745,10 @@ struct EndOfTrack : Meta<T> {
 };
 
 
-template<typename T>
-std::string to_string(const Message<T>& message) {
-    std::stringstream out;
-    const auto        msgType = message.type();
-    out << "time=" << message.time << " | [";
-    out << to_string(msgType) << "] ";
-    switch (msgType) {
-    case (MessageType::NoteOn): {
-    }   // the same as NoteOff
-    case (MessageType::NoteOff): {
-        const auto& msg = message.template cast<NoteOff>();
-        out << "channel=" << static_cast<int>(msg.channel())
-            << " pitch=" << static_cast<int>(msg.pitch())
-            << " velocity=" << static_cast<int>(msg.velocity());
-        break;
-    };
-    case (MessageType::ProgramChange): {
-        const auto& msg = message.template cast<ProgramChange>();
-        out << "channel=" << static_cast<int>(msg.channel())
-            << " program=" << static_cast<int>(msg.program());
-        break;
-    };
-    case (MessageType::ControlChange): {
-        const auto& msg = message.template cast<ControlChange>();
-        out << "channel=" << static_cast<int>(msg.channel())
-            << " control number=" << static_cast<int>(msg.control_number())
-            << " control value=" << static_cast<int>(msg.control_value());
-        break;
-    };
-    case (MessageType::Meta): {
-        const auto& msg      = message.template cast<Meta>();
-        const auto  metaType = msg.meta_type();
-        out << "(" << to_string(metaType) << ") ";
-        switch (metaType) {
-        case (MetaType::TrackName): {
-            const auto& data = msg.meta_value();
-            out << std::string(data.begin(), data.end());
-            break;
-        };
-        case (MetaType::InstrumentName): {
-            const auto& data = msg.meta_value();
-            out << std::string(data.begin(), data.end());
-            break;
-        };
-        case (MetaType::TimeSignature): {
-            const auto& timeSig = msg.template cast<TimeSignature>();
-            out << static_cast<int>(timeSig.numerator()) << "/"
-                << static_cast<int>(timeSig.denominator());
-            break;
-        };
-        case (MetaType::SetTempo): {
-            const auto tempo = msg.template cast<SetTempo>().tempo();
-            out << static_cast<int>(tempo);
-            break;
-        };
-        case (MetaType::KeySignature): {
-            out << msg.template cast<KeySignature>().name();
-            break;
-        }
-        case (MetaType::EndOfTrack): {
-            break;
-        }
-        default: {
-            const auto& data = message.data();
-            out << static_cast<int>(metaType) << " value=" << container::to_string(data);
-            break;
-        }
-        }
-        break;
-    };
-    default: {
-        out << "Status code: " << static_cast<int>(lut::to_msg_status(msgType))
-            << " length=" << message.data().size();
-        break;
-    };
-    }
-
-    return out.str();
-};
-
 template<typename T = container::SmallBytes>
 using Messages = std::vector<Message<T>>;
 }   // namespace message
+
 
 namespace utils {
 inline void write_eot(uint8_t*& cursor) {
@@ -857,6 +768,7 @@ inline void write_eot(container::Bytes& bytes) {
     bytes.emplace_back(0x00);
 }
 }   // namespace utils
+
 
 namespace track {
 const std::string MTRK("MTrk");
@@ -1045,16 +957,6 @@ public:
 
         return trackBytes;
     };
-};
-
-
-template<typename T>
-std::string to_string(const Track<T>& track) {
-    std::stringstream out;
-    for (int j = 0; j < track.message_num(); ++j) {
-        out << message::to_string(track.message(j)) << std::endl;
-    }
-    return out.str();
 };
 
 template<typename T = container::SmallBytes>
@@ -1358,28 +1260,136 @@ public:
 };
 
 #undef MIDI_FORMAT
-//
-// inline std::ostream& operator<<(std::ostream& out, const MidiFile& file) {
-//     out << "File format: " << file.get_format_string() << std::endl;
-//     out << "Division:\n" << "    Type: " << file.get_division_type() << std::endl;
-//     if (file.get_division_type()) {
-//         out << "    Tick per Second: " << file.get_tick_per_second() << std::endl;
-//     } else {
-//         out << "    Tick per Quarter: " << file.get_tick_per_quarter() << std::endl;
-//     }
-//
-//     out << std::endl;
-//
-//     for (int i = 0; i < file.track_num(); ++i) {
-//         out << "Track " << i << ": " << std::endl;
-//         out << file.track(i) << std::endl;
-//     }
-//
-//     return out;
-// };
+}   // namespace file
+
+
+template<container::BasicArr T>
+std::string to_string(const T& data) {
+    // show in hex
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0') << "{ ";
+    for (auto& d : data) ss << std::setw(2) << static_cast<int>(d) << " ";
+    ss << "}" << std::dec;
+    return ss.str();
+};
+
+// --- MIDI message to_string implementations ---
+//clang-format off
+template<typename T>
+std::string to_string(const message::NoteOn<T>& note) {
+    return "NoteOn: channel=" + std::to_string(note.channel()) + " pitch="
+           + std::to_string(note.pitch()) + " velocity=" + std::to_string(note.velocity());
+}
 
 template<typename T>
-inline std::string to_string(const MidiFile<T>& file) {
+std::string to_string(const message::NoteOff<T>& note) {
+    return "NoteOff: channel=" + std::to_string(note.channel()) + " pitch="
+           + std::to_string(note.pitch()) + " velocity=" + std::to_string(note.velocity());
+}
+
+template<typename T>
+std::string to_string(const message::ProgramChange<T>& pc) {
+    return "ProgramChange: channel=" + std::to_string(pc.channel())
+           + " program=" + std::to_string(pc.program());
+}
+
+template<typename T>
+std::string to_string(const message::ControlChange<T>& cc) {
+    return "ControlChange: channel=" + std::to_string(cc.channel())
+           + " control number=" + std::to_string(cc.control_number())
+           + " control value=" + std::to_string(cc.control_value());
+}
+//clang-format on
+
+// --- Meta message to_string implementations ---
+
+template<typename T>
+std::string to_string(const message::TrackName<T>& meta) {
+    const auto &data = meta.meta_value();
+    return std::string(data.begin(), data.end());
+}
+
+template<typename T>
+std::string to_string(const message::InstrumentName<T>& meta) {
+    const auto &data = meta.meta_value();
+    return std::string(data.begin(), data.end());
+}
+
+template<typename T>
+std::string to_string(const message::TimeSignature<T>& ts) {
+    return std::to_string(ts.numerator()) + "/" + std::to_string(ts.denominator());
+}
+
+template<typename T>
+std::string to_string(const message::SetTempo<T>& st) {
+    return std::to_string(st.tempo());
+}
+
+template<typename T>
+std::string to_string(const message::KeySignature<T>& ks) {
+    return ks.name();
+}
+
+template<typename T>
+static std::string to_string(const message::EndOfTrack<T>&) {
+    return "EndOfTrack";
+}
+
+// Meta to_string dispatcher
+template<typename T>
+std::string to_string(const message::Meta<T>& meta) {
+    std::string output = "Meta: (" + to_string(meta.meta_type()) + ") ";
+    switch (meta.meta_type()) {
+    case message::MetaType::TrackName:
+        return output + to_string(meta.template cast<message::TrackName>());
+    case message::MetaType::InstrumentName:
+        return output + to_string(meta.template cast<message::InstrumentName>());
+    case message::MetaType::TimeSignature:
+        return output + to_string(meta.template cast<message::TimeSignature>());
+    case message::MetaType::SetTempo:
+        return output + to_string(meta.template cast<message::SetTempo>());
+    case message::MetaType::KeySignature:
+        return output + to_string(meta.template cast<message::KeySignature>());
+    case message::MetaType::EndOfTrack:
+        return output + to_string(meta.template cast<message::EndOfTrack>());
+    default: return output + "value=" + to_string(meta.data());
+    }
+}
+
+// --- General Message to_string function ---
+
+template<typename T>
+std::string to_string(const message::Message<T>& message) {
+    std::string output
+        = "time=" + std::to_string(message.time) + " | ";
+    switch (message.type()) {
+    case message::MessageType::NoteOn:
+        return output + to_string(message.template cast<message::NoteOn>());
+    case message::MessageType::NoteOff:
+        return output + to_string(message.template cast<message::NoteOff>());
+    case message::MessageType::ProgramChange:
+        return output + to_string(message.template cast<message::ProgramChange>());
+    case message::MessageType::ControlChange:
+        return output + to_string(message.template cast<message::ControlChange>());
+    case message::MessageType::Meta:
+        return output + to_string(message.template cast<message::Meta>());
+    default:
+        return output + "Status code: " + std::to_string(lut::to_msg_status(message.type()))
+               + " length=" + std::to_string(message.data().size());
+    }
+}
+
+template<typename T>
+std::string to_string(const track::Track<T>& track) {
+    std::stringstream out;
+    for (int j = 0; j < track.message_num(); ++j) {
+        out << to_string(track.message(j)) << std::endl;
+    }
+    return out.str();
+};
+
+template<typename T>
+std::string to_string(const file::MidiFile<T>& file) {
     std::stringstream out;
     out << "File format: " << file.get_format_string() << std::endl;
     out << "Division:\n"
@@ -1393,14 +1403,10 @@ inline std::string to_string(const MidiFile<T>& file) {
 
     for (int i = 0; i < file.track_num(); ++i) {
         out << "Track " << i << ": " << std::endl;
-        out << track::to_string(file.track(i)) << std::endl;
+        out << to_string(file.track(i)) << std::endl;
     }
-
     return out.str();
 };
 
-}   // namespace file
 }   // namespace minimidi
-
-
 #endif   // MINIMIDI_HPP
