@@ -16,6 +16,7 @@ if(BUILD_EXAMPLES)
 
     add_executable(parsemidi example/parsemidi.cpp)
     target_link_libraries(parsemidi PRIVATE minimidi)
+    target_compile_features(parsemidi PRIVATE cxx_std_20)
 
     add_executable(redumpmidi example/redumpmidi.cpp)
     target_link_libraries(redumpmidi PRIVATE minimidi)

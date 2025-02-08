@@ -22,7 +22,7 @@ using namespace minimidi;
 
 void write_file(const string& from, const string& to)
 {
-    file::MidiFile midiFile = file::MidiFile::from_file(from);
+    file::MidiFile midiFile = file::MidiFile<>::from_file(from);
     file::MidiFile midiFile2 = file::MidiFile(midiFile.tracks,
         file::MidiFormat::MultiTrack,
         0,

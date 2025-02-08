@@ -26,8 +26,39 @@ typedef std::vector<uint8_t> Bytes;
 // size of SmallBytes is totally 8 bytes on the stack (7 bytes + 1 byte for size)
 typedef ankerl::svector<uint8_t, 7> SmallBytes;
 
+// Concepts
+
+// concept for begin end constructor
+template<typename T>
+concept BasicArr = requires(T a) {
+    { a.begin() };
+    { a.end() };
+    { T(a.begin(), a.end()) };
+    { a.size() } -> std::integral;
+    { a[0] } -> std::convertible_to<uint8_t>;
+};
+
+// concept for move constructor
+template<typename T>
+concept MoveConstructible = std::is_move_constructible_v<T> && std::movable<T>;
+
+// concept for a random iterator which can dereference into a uint8_t
+template<typename T>
+concept RandomIterator = requires(T a) {
+    { *a } -> std::convertible_to<uint8_t>;
+    { a++ };
+    { a + 10 };
+};
+
+// concept for construct from initializer list
+template<typename T>
+concept InitializerList = requires(T a) {
+    { T{0x00, 0x01, 0x02} };
+};
+
 // to_string func for SmallBytes
-inline std::string to_string(const SmallBytes& data) {
+template<BasicArr T>
+inline std::string to_string(const T& data) {
     // show in hex
     std::stringstream ss;
     ss << std::hex << std::setfill('0') << "{ ";
@@ -35,6 +66,7 @@ inline std::string to_string(const SmallBytes& data) {
     ss << "}" << std::dec;
     return ss.str();
 };
+
 }   // namespace container
 
 // Here inline is used to avoid obeying the one definition rule (ODR).
@@ -302,42 +334,10 @@ constexpr static uint8_t to_status_byte(const message::MessageType type, const u
 
 namespace message {
 
-// Concepts
 
-// concept for begin end constructor
-template<typename T>
-concept BasicArr = requires(T a) {
-    { a.begin() };
-    { a.end() };
-    { T(a.begin(), a.end()) };
-    { a.size()->std::size_t };
-    { a[0] } -> std::convertible_to<uint8_t>;
-    { a[0] = 0x00 };
-};
-
-// concept for move constructor
-template<typename T>
-concept MoveConstructible = requires(T a) {
-    { std::movable(a) };
-    { T(std::move(a)) };
-};
-
-// concept for a random iterator which can dereference into a uint8_t
-template<typename T>
-concept RandomIterator = requires(T a) {
-    { *a } -> std::convertible_to<uint8_t>;
-    { a++ };
-    { a + 10 };
-};
-
-// concept for construct from initializer list
-template<typename T>
-concept InitializerList = requires(T a) {
-    { T{0x00, 0x01, 0x02} };
-};
 
 template<typename T = container::SmallBytes>
-    requires BasicArr<T>
+    requires container::BasicArr<T>
 class Message {
 protected:
     T _data;
@@ -354,16 +354,16 @@ public:
 
     // move constructor
     Message(const uint32_t time, const uint8_t statusByte, T&& data)
-        requires MoveConstructible<T>
+        requires container::MoveConstructible<T>
         : _data(std::move(data)), time(time), statusByte(statusByte) {};
 
     // constructor from begin and end
-    template<RandomIterator Iter>
+    template<container::RandomIterator Iter>
     Message(const uint32_t time, const uint8_t statusByte, Iter begin, Iter end) :
         _data(begin, end), time(time), statusByte(statusByte){};
 
     // constructor from begin and size
-    template<RandomIterator Iter>
+    template<typename Iter>
     Message(const uint32_t time, const uint8_t statusByte, Iter begin, size_t size) :
         _data(begin, begin + size), time(time), statusByte(statusByte){};
 
@@ -377,22 +377,25 @@ public:
         _data(other.data().begin(), other.data().end()), time(other.time),
         statusByte(other.statusByte){};
 
+    Message(const Message& other):
+        _data(other._data.begin(), other._data.end()), time(other.time), statusByte(other.statusByte) {};
+
     // move constructor from another message with same data type
     Message(Message&& other) noexcept
-        requires MoveConstructible<T>
+        requires container::MoveConstructible<T>
         : _data(std::move(other._data)), time(other.time), statusByte(other.statusByte) {};
 
     // Zero Cost Down casting to derived class
-    template<typename U>
-        requires std::is_base_of_v<Message, U>
-    [[nodiscard]] const U& cast() const {
-        return reinterpret_cast<const U&>(*this);
+    template<template<typename> typename U>
+        requires std::is_base_of_v<Message<T>, U<T>>
+    [[nodiscard]] const U<T>& cast() const {
+        return reinterpret_cast<const U<T>&>(*this);
     }
 
-    template<typename U>
-        requires std::is_base_of_v<Message, U>
-    [[nodiscard]] U& cast() {
-        return reinterpret_cast<U&>(*this);
+    template<template<typename> typename U>
+        requires std::is_base_of_v<Message<T>, U<T>>
+    [[nodiscard]] U<T>& cast() {
+        return reinterpret_cast<U<T>&>(*this);
     }
 
     [[nodiscard]] const T& data() const { return _data; };
@@ -402,8 +405,7 @@ public:
     [[nodiscard]] uint8_t channel() const { return statusByte & 0x0F; };
 };
 
-
-template<typename T>
+template<typename T = container::SmallBytes>
 class NoteOn : public Message<T> {
 public:
     static constexpr auto type   = MessageType::NoteOn;
@@ -411,14 +413,14 @@ public:
 
     NoteOn() = default;
     NoteOn(const uint32_t time, const uint8_t channel, const uint8_t pitch, const uint8_t velocity)
-        requires InitializerList<T>
+        requires container::InitializerList<T>
         : Message<T>(time, lut::to_status_byte(type, channel), {pitch, velocity}) {};
 
     [[nodiscard]] uint8_t pitch() const { return this->_data[0]; };
     [[nodiscard]] uint8_t velocity() const { return this->_data[1]; };
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 class NoteOff : public Message<T> {
 public:
     static constexpr auto type   = MessageType::NoteOff;
@@ -426,14 +428,14 @@ public:
 
     NoteOff() = default;
     NoteOff(const uint32_t time, const uint8_t channel, const uint8_t pitch, const uint8_t velocity)
-        requires InitializerList<T>
+        requires container::InitializerList<T>
         : Message<T>(time, lut::to_status_byte(type, channel), {pitch, velocity}) {};
 
     [[nodiscard]] uint8_t pitch() const { return this->_data[0]; };
     [[nodiscard]] uint8_t velocity() const { return this->_data[1]; };
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 class ControlChange : public Message<T> {
 public:
     static constexpr auto type   = MessageType::ControlChange;
@@ -446,14 +448,14 @@ public:
         const uint8_t  controlNumber,
         const uint8_t  controlValue
     )
-        requires InitializerList<T>
+        requires container::InitializerList<T>
         : Message<T>(time, lut::to_status_byte(type, channel), {controlNumber, controlValue}) {};
 
     [[nodiscard]] uint8_t control_number() const { return this->_data[0]; };
     [[nodiscard]] uint8_t control_value() const { return this->_data[1]; };
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 class ProgramChange : public Message<T> {
 public:
     static constexpr auto type   = MessageType::ProgramChange;
@@ -466,7 +468,7 @@ public:
     [[nodiscard]] uint8_t program() const { return this->_data[0]; };
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 class SysEx : public Message<T> {
 public:
     static constexpr auto type   = MessageType::SysExStart;
@@ -490,7 +492,7 @@ public:
     }
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 class QuarterFrame : public Message<T> {
 public:
     static constexpr auto type   = MessageType::QuarterFrame;
@@ -498,14 +500,14 @@ public:
 
     QuarterFrame() = default;
     QuarterFrame(const uint32_t time, const uint8_t type, const uint8_t value)
-        requires InitializerList<T>
+        requires container::InitializerList<T>
         : Message<T>(time, status, {static_cast<uint8_t>((type << 4) | value)}) {};
 
     [[nodiscard]] uint8_t frame_type() const { return this->_data[0] >> 4; };
     [[nodiscard]] uint8_t frame_value() const { return this->_data[0] & 0x0F; };
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 class SongPositionPointer : public Message<T> {
 public:
     static constexpr auto type   = MessageType::SongPositionPointer;
@@ -514,7 +516,7 @@ public:
     SongPositionPointer() = default;
     // clang-format off
     SongPositionPointer(const uint32_t time, const uint16_t position)
-        requires InitializerList<T>: Message<T>(
+        requires container::InitializerList<T>: Message<T>(
             time, status,
             {static_cast<uint8_t>(position & 0x7F), static_cast<uint8_t>(position >> 7)}
         ) {};
@@ -525,9 +527,7 @@ public:
     };
 };
 
-
-
-template<typename T>
+template<typename T = container::SmallBytes>
 class PitchBend : public Message<T> {
     static constexpr auto type   = MessageType::PitchBend;
     static constexpr auto status = lut::to_msg_status(type);
@@ -535,7 +535,7 @@ class PitchBend : public Message<T> {
     PitchBend() = default;
     // clang-format off
     PitchBend(const uint32_t time, const uint8_t channel, const int16_t value)
-        requires InitializerList<T>: Message<T>(
+        requires container::InitializerList<T>: Message<T>(
             time, lut::to_status_byte(status, channel), {
                 static_cast<uint8_t>((value - MIN_PITCHBEND) & 0x7F),
                 static_cast<uint8_t>((value - MIN_PITCHBEND) >> 7)
@@ -549,7 +549,7 @@ class PitchBend : public Message<T> {
     };
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 struct Meta : Message<T> {
     static constexpr auto type   = MessageType::Meta;
     static constexpr auto status = lut::to_msg_status(type);
@@ -577,14 +577,11 @@ struct Meta : Message<T> {
     };
 
 
-    [[nodiscard]] MetaType meta_type() const { return status_to_meta_type(this->_data[0]); };
-    [[nodiscard]] const T& meta_value() const {
-        return {this->_data.begin() + 2, this->_data.end()};
-    };
+    [[nodiscard]] MetaType meta_type() const { return lut::to_meta_type(this->_data[0]); };
+    [[nodiscard]] T meta_value() const { return {this->_data.begin() + 2, this->_data.end()}; };
 };
 
-
-template<typename T>
+template<typename T = container::SmallBytes>
 struct SetTempo : Meta<T> {
     static constexpr auto meta_type = MetaType::SetTempo;
 
@@ -602,7 +599,7 @@ struct SetTempo : Meta<T> {
     [[nodiscard]] uint32_t tempo() const { return utils::read_msb_bytes(&this->_data[2], 3); };
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 struct TimeSignature : Meta<T> {
     static constexpr auto meta_type = MetaType::TimeSignature;
 
@@ -623,7 +620,7 @@ struct TimeSignature : Meta<T> {
     [[nodiscard]] uint8_t denominator() const { return 1 << this->_data[3]; };
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 struct KeySignature : Meta<T> {
     static constexpr auto meta_type = MetaType::KeySignature;
 
@@ -648,7 +645,7 @@ struct KeySignature : Meta<T> {
     };
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 struct SMPTEOffset : Meta<T> {
     static constexpr auto meta_type = MetaType::SMPTEOffset;
 
@@ -679,7 +676,7 @@ struct SMPTEOffset : Meta<T> {
     [[nodiscard]] uint8_t subframe() const { return this->_data[6]; };
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 struct Text : Meta<T> {
     static constexpr auto meta_type = MetaType::Text;
 
@@ -688,7 +685,7 @@ struct Text : Meta<T> {
     Text(const uint32_t time, const std::string& text) : Meta<T>(time, meta_type, text) {};
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 struct TrackName : Meta<T> {
     static constexpr auto meta_type = MetaType::TrackName;
 
@@ -697,7 +694,7 @@ struct TrackName : Meta<T> {
     TrackName(const uint32_t time, const std::string& name) : Meta<T>(time, meta_type, name) {};
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 struct InstrumentName : Meta<T> {
     static constexpr auto meta_type = MetaType::InstrumentName;
 
@@ -707,7 +704,7 @@ struct InstrumentName : Meta<T> {
         Meta<T>(time, meta_type, name) {};
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 struct Lyric : Meta<T> {
     static constexpr auto meta_type = MetaType::Lyric;
 
@@ -716,7 +713,7 @@ struct Lyric : Meta<T> {
     Lyric(const uint32_t time, const std::string& lyric) : Meta<T>(time, meta_type, lyric) {};
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 struct Marker : Meta<T> {
     static constexpr auto meta_type = MetaType::Marker;
 
@@ -725,7 +722,7 @@ struct Marker : Meta<T> {
     Marker(const uint32_t time, const std::string& marker) : Meta<T>(time, meta_type, marker) {};
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 struct CuePoint : Meta<T> {
     static constexpr auto meta_type = MetaType::CuePoint;
 
@@ -735,7 +732,7 @@ struct CuePoint : Meta<T> {
         Meta<T>(time, meta_type, cuePoint) {};
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 struct MIDIChannelPrefix : Meta<T> {
     static constexpr auto meta_type = MetaType::MIDIChannelPrefix;
 
@@ -746,7 +743,7 @@ struct MIDIChannelPrefix : Meta<T> {
     };
 };
 
-template<typename T>
+template<typename T = container::SmallBytes>
 struct EndOfTrack : Meta<T> {
     static constexpr auto meta_type = MetaType::EndOfTrack;
 
@@ -757,91 +754,89 @@ struct EndOfTrack : Meta<T> {
     };
 };
 
-//
-// inline std::ostream& operator<<(std::ostream& out, const Message<>& message) {
-//     out << "time=" << message.get_time() << " | [";
-//     out << to_string(message.get_type()) << "] ";
-//     switch (message.get_type()) {
-//     case (MessageType::NoteOn): {
-//     }   // the same as NoteOff
-//     case (MessageType::NoteOff): {
-//         out << "channel=" << static_cast<int>(message.get_channel())
-//             << " pitch=" << static_cast<int>(message.get_pitch())
-//             << " velocity=" << static_cast<int>(message.get_velocity());
-//         break;
-//     };
-//     case (MessageType::ProgramChange): {
-//         out << "channel=" << static_cast<int>(message.get_channel())
-//             << " program=" << static_cast<int>(message.get_program());
-//         break;
-//     };
-//     case (MessageType::ControlChange): {
-//         out << "channel=" << static_cast<int>(message.get_channel())
-//             << " control number=" << static_cast<int>(message.get_control_number())
-//             << " control value=" << static_cast<int>(message.get_control_value());
-//         break;
-//     };
-//     case (MessageType::Meta): {
-//         out << "(" << message.get_meta_type_string() << ") ";
-//         switch (message.get_meta_type()) {
-//         case (MetaType::TrackName): {
-//             const auto& data = message.get_meta_value();
-//             out << std::string(data.begin(), data.end());
-//             break;
-//         };
-//         case (MetaType::InstrumentName): {
-//             const auto& data = message.get_meta_value();
-//             out << std::string(data.begin(), data.end());
-//             break;
-//         };
-//         case (MetaType::TimeSignature): {
-//             const TimeSignature timeSig = message.get_time_signature();
-//             out << static_cast<int>(timeSig.numerator) << "/"
-//                 << static_cast<int>(timeSig.denominator);
-//             break;
-//         };
-//         case (MetaType::SetTempo): {
-//             out << static_cast<int>(message.get_tempo());
-//             break;
-//         };
-//         case (MetaType::KeySignature): {
-//             out << message.get_key_signature().to_string();
-//             break;
-//         }
-//         case (MetaType::EndOfTrack): {
-//             break;
-//         }
-//         default: {
-//             const auto& data = message.get_meta_value();
-//             out << static_cast<int>(message.get_meta_type())
-//                 << " value=" << container::to_string(data);
-//             break;
-//         }
-//         }
-//         break;
-//     };
-//     default: {
-//         out << "Status code: " << static_cast<int>(message_attr(message.get_type()).status)
-//             << " length=" << message.get_data().size();
-//         break;
-//     };
-//     }
-//
-//     return out;
-// };
 
 template<typename T>
-typedef std::vector<Message<T>> Messages;
+std::string to_string(const Message<T>& message) {
+    std::stringstream out;
+    const auto        msgType = message.type();
+    out << "time=" << message.time << " | [";
+    out << to_string(msgType) << "] ";
+    switch (msgType) {
+    case (MessageType::NoteOn): {
+    }   // the same as NoteOff
+    case (MessageType::NoteOff): {
+        const auto& msg = message.template cast<NoteOff>();
+        out << "channel=" << static_cast<int>(msg.channel())
+            << " pitch=" << static_cast<int>(msg.pitch())
+            << " velocity=" << static_cast<int>(msg.velocity());
+        break;
+    };
+    case (MessageType::ProgramChange): {
+        const auto& msg = message.template cast<ProgramChange>();
+        out << "channel=" << static_cast<int>(msg.channel())
+            << " program=" << static_cast<int>(msg.program());
+        break;
+    };
+    case (MessageType::ControlChange): {
+        const auto& msg = message.template cast<ControlChange>();
+        out << "channel=" << static_cast<int>(msg.channel())
+            << " control number=" << static_cast<int>(msg.control_number())
+            << " control value=" << static_cast<int>(msg.control_value());
+        break;
+    };
+    case (MessageType::Meta): {
+        const auto& msg      = message.template cast<Meta>();
+        const auto  metaType = msg.meta_type();
+        out << "(" << to_string(metaType) << ") ";
+        switch (metaType) {
+        case (MetaType::TrackName): {
+            const auto& data = msg.meta_value();
+            out << std::string(data.begin(), data.end());
+            break;
+        };
+        case (MetaType::InstrumentName): {
+            const auto& data = msg.meta_value();
+            out << std::string(data.begin(), data.end());
+            break;
+        };
+        case (MetaType::TimeSignature): {
+            const auto& timeSig = msg.template cast<TimeSignature>();
+            out << static_cast<int>(timeSig.numerator()) << "/"
+                << static_cast<int>(timeSig.denominator());
+            break;
+        };
+        case (MetaType::SetTempo): {
+            const auto tempo = msg.template cast<SetTempo>().tempo();
+            out << static_cast<int>(tempo);
+            break;
+        };
+        case (MetaType::KeySignature): {
+            out << msg.template cast<KeySignature>().name();
+            break;
+        }
+        case (MetaType::EndOfTrack): {
+            break;
+        }
+        default: {
+            const auto& data = message.data();
+            out << static_cast<int>(metaType) << " value=" << container::to_string(data);
+            break;
+        }
+        }
+        break;
+    };
+    default: {
+        out << "Status code: " << static_cast<int>(lut::to_msg_status(msgType))
+            << " length=" << message.data().size();
+        break;
+    };
+    }
 
-// inline Messages filter_message(
-//     const Messages& messages, const std::function<bool(const Message&)>& filter
-// ) {
-//     Messages new_messages;
-//     new_messages.reserve(messages.size());
-//     std::copy_if(messages.begin(), messages.end(), std::back_inserter(new_messages), filter);
-//     new_messages.shrink_to_fit();
-//     return new_messages;
-// };
+    return out.str();
+};
+
+template<typename T = container::SmallBytes>
+using Messages = std::vector<Message<T>>;
 }   // namespace message
 
 namespace utils {
@@ -867,13 +862,14 @@ namespace track {
 const std::string MTRK("MTrk");
 
 
-template<typename T>
+template<typename T = container::SmallBytes>
 class Track {
 public:
     message::Messages<T> messages;
     Track() = default;
+    Track(Track<T>&& other) noexcept : messages(std::move(other.messages)) {};
+    Track(const Track<T>& other) : messages(other.messages.begin(), other.messages.end()) {};
 
-    // explicit Track(const container::ByteSpan data) {
     Track(const uint8_t* cursor, const size_t size) {
         messages.reserve(size / 3 + 100);
         const uint8_t* bufferEnd = cursor + size;
@@ -921,9 +917,13 @@ public:
                         + std::to_string(eventLen) + "!"
                     );
                 }
-                messages.emplace_back(tickOffset, prevBuffer, eventLen);
+                // The message data does not include the status byte,
+                // but the meta type byte is included
+                messages.emplace_back(tickOffset, *prevBuffer, prevBuffer + 1, eventLen - 1);
 
-                if (messages.back().get_meta_type() == message::MetaType::EndOfTrack) break;
+                if (messages.back().template cast<message::Meta>().meta_type()
+                    == message::MetaType::EndOfTrack)
+                    break;
 
                 cursor = prevBuffer + eventLen;
             }
@@ -944,7 +944,7 @@ public:
                         + std::to_string(prevEventLen) + "!"
                     );
                 }
-                messages.emplace_back(tickOffset, prevBuffer, prevEventLen);
+                messages.emplace_back(tickOffset, *prevBuffer, prevBuffer + 1, prevEventLen - 1);
                 cursor = prevBuffer + prevEventLen;
             }
             // Channel message or system common message
@@ -963,7 +963,7 @@ public:
                         + std::to_string(prevEventLen) + "!"
                     );
                 }
-                messages.emplace_back(tickOffset, cursor, prevEventLen);
+                messages.emplace_back(tickOffset, curStatusCode, cursor + 1, prevEventLen - 1);
                 cursor += prevEventLen;
             }
 
@@ -996,10 +996,11 @@ public:
         size_t dataLen = 0;
 
         for (int i = 0; i < this->messages.size(); ++i) {
-            if (this->messages[i].get_type() != message::MessageType::Meta
-                || this->messages[i].get_meta_type() != message::MetaType::EndOfTrack) {
-                msgHeaders.emplace_back(this->messages[i].get_time(), i);
-                dataLen += this->messages[i].get_data().size();
+            if (this->messages[i].type() != message::MessageType::Meta
+                || this->messages[i].template cast<message::Meta>().meta_type()
+                       != message::MetaType::EndOfTrack) {
+                msgHeaders.emplace_back(this->messages[i].time, i);
+                dataLen += this->messages[i].data().size();
             }
         }
 
@@ -1046,14 +1047,18 @@ public:
     };
 };
 
-// inline std::ostream& operator<<(std::ostream& out, const Track& track) {
-//     for (int j = 0; j < track.message_num(); ++j) { out << track.message(j) << std::endl; }
-//
-//     return out;
-// };
 
 template<typename T>
-typedef std::vector<Track<T>> Tracks;
+std::string to_string(const Track<T>& track) {
+    std::stringstream out;
+    for (int j = 0; j < track.message_num(); ++j) {
+        out << message::to_string(track.message(j)) << std::endl;
+    }
+    return out.str();
+};
+
+template<typename T = container::SmallBytes>
+using Tracks = std::vector<Track<T>>;
 }   // namespace track
 
 
@@ -1372,6 +1377,28 @@ public:
 //
 //     return out;
 // };
+
+template<typename T>
+inline std::string to_string(const MidiFile<T>& file) {
+    std::stringstream out;
+    out << "File format: " << file.get_format_string() << std::endl;
+    out << "Division:\n"
+        << "    Type: " << file.get_division_type() << std::endl;
+    if (file.get_division_type()) {
+        out << "    Tick per Second: " << file.get_tick_per_second() << std::endl;
+    } else {
+        out << "    Tick per Quarter: " << file.get_tick_per_quarter() << std::endl;
+    }
+    out << std::endl;
+
+    for (int i = 0; i < file.track_num(); ++i) {
+        out << "Track " << i << ": " << std::endl;
+        out << track::to_string(file.track(i)) << std::endl;
+    }
+
+    return out.str();
+};
+
 }   // namespace file
 }   // namespace minimidi
 

@@ -22,10 +22,10 @@ using namespace minimidi;
 
 void write_file(const string& from, const string& to)
 {
-    file::MidiFile midiFile = file::MidiFile::from_file(from);
+    file::MidiFile midiFile = file::MidiFile<>::from_file(from);
     ofstream dst(to, ios::binary);
 
-    dst << midiFile;
+    dst << file::to_string(midiFile) << endl;
 };
 
 int main(int argc, char *argv[])
