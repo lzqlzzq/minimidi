@@ -5,7 +5,9 @@ option(BUILD_EXAMPLES "Build examples" OFF)
 
 add_library(minimidi INTERFACE)
 add_library(minimidi::minimidi ALIAS minimidi)
-target_compile_features(minimidi INTERFACE cxx_std_17)
+# TODO: upgrade to C++20 temporarily for concepts
+# concepts will be replaced by SFINAE in the future
+target_compile_features(minimidi INTERFACE cxx_std_20)
 target_include_directories(minimidi INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 if(BUILD_EXAMPLES)
