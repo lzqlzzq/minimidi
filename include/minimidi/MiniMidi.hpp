@@ -61,16 +61,17 @@ concept InitializerList = requires(T a) {
 
 
 namespace utils {
-inline uint32_t read_variable_length(const uint8_t*& buffer) {
+template<container::RandomIterator Iter>
+inline uint32_t read_variable_length(Iter& buffer) {
     uint32_t value = 0;
 
     for (auto i = 0; i < 4; ++i) {
         value = (value << 7) + (*buffer & 0x7f);
         if (!(*buffer & 0x80)) break;
-        buffer++;
+        ++buffer;
     }
 
-    buffer++;
+    ++buffer;
     return value;
 };
 
@@ -562,7 +563,7 @@ struct Meta : Message<T> {
 
     [[nodiscard]] MetaType meta_type() const { return lut::to_meta_type(this->_data[0]); };
     [[nodiscard]] T meta_value() const {
-        const uint8_t* cursor = this->_data.begin() + 1;
+        auto cursor = this->_data.begin() + 1;
         const auto variable_length = utils::read_variable_length(cursor);
         if (cursor + variable_length > this->_data.end()) {
             throw std::runtime_error("MiniMidi: Meta value is out of bound");
