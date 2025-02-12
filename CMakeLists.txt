@@ -29,10 +29,11 @@ if(BUILD_EXAMPLES)
     FetchContent_Declare(
             nanobench
             GIT_REPOSITORY https://github.com/martinus/nanobench.git
-            GIT_TAG v4.1.0
+            GIT_TAG v4.3.11
             GIT_SHALLOW TRUE)
 
     FetchContent_MakeAvailable(nanobench)
     add_executable(parsebench example/parsebench.cpp)
     target_link_libraries(parsebench PRIVATE minimidi nanobench)
+    target_compile_features(parsebench PRIVATE cxx_std_20)
 endif()
