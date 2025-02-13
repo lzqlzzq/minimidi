@@ -24,7 +24,7 @@ int main(int argc, char* argv[]) {
         try {
             const auto data = read_file(filename);
             ankerl::nanobench::Bench()
-                .minEpochIterations(1000)
+                .minEpochIterations(100)
                 .run("span", [&data] {
                     minimidi::file::MidiFile<std::span<const uint8_t>> midifile{data};
                     ankerl::nanobench::doNotOptimizeAway(midifile);

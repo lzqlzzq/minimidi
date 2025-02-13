@@ -62,7 +62,7 @@ concept InitializerList = requires(T a) {
 
 namespace utils {
 template<container::RandomIterator Iter>
-inline uint32_t read_variable_length(Iter& buffer) {
+uint32_t read_variable_length(Iter& buffer) {
     uint32_t value = 0;
 
     for (auto i = 0; i < 4; ++i) {
@@ -75,7 +75,7 @@ inline uint32_t read_variable_length(Iter& buffer) {
     return value;
 };
 
-inline uint64_t read_msb_bytes(const uint8_t* buffer, size_t length) {
+inline uint64_t read_msb_bytes(const uint8_t* buffer, const size_t length) {
     uint64_t res = 0;
 
     for (auto i = 0; i < length; ++i) {
@@ -86,7 +86,7 @@ inline uint64_t read_msb_bytes(const uint8_t* buffer, size_t length) {
     return res;
 };
 
-inline void write_msb_bytes(uint8_t* buffer, size_t value, size_t length) {
+inline void write_msb_bytes(uint8_t* buffer, const size_t value, const size_t length) {
     for (auto i = 1; i <= length; ++i) {
         *buffer = static_cast<uint8_t>((value >> ((length - i) * 8)) & 0xFF);
         ++buffer;
@@ -562,8 +562,8 @@ struct Meta : Message<T> {
 
 
     [[nodiscard]] MetaType meta_type() const { return lut::to_meta_type(this->_data[0]); };
-    [[nodiscard]] T meta_value() const {
-        auto cursor = this->_data.begin() + 1;
+    [[nodiscard]] T        meta_value() const {
+        auto       cursor          = this->_data.begin() + 1;
         const auto variable_length = utils::read_variable_length(cursor);
         if (cursor + variable_length > this->_data.end()) {
             throw std::runtime_error("MiniMidi: Meta value is out of bound");
@@ -774,6 +774,178 @@ inline void write_eot(container::Bytes& bytes) {
 namespace track {
 const std::string MTRK("MTrk");
 
+class MessageGenerator {
+public:
+    MessageGenerator(const uint8_t* begin, const uint8_t* end) : cursor(begin), bufferEnd(end) {}
+    MessageGenerator(const uint8_t* begin, const size_t size) :
+        cursor(begin), bufferEnd(begin + size) {}
+
+    [[nodiscard]] bool done() const { return cursor >= bufferEnd; }
+
+    template<typename Func>
+    auto emplaceUsing(Func f) {
+        checkRange();
+        tickOffset += utils::read_variable_length(cursor);
+        switch (const uint8_t curStatusCode = *cursor; curStatusCode) {
+        case 0xF0: return sysExMsg(curStatusCode, f);
+        case 0xFF: return metaMsg(curStatusCode, f);
+        default: {
+            if (curStatusCode < 0x80) {
+                return runningStatusMsg(curStatusCode, f);
+            } else {
+                return commonMsg(curStatusCode, f);
+            }
+        }
+        }
+    }
+
+
+protected:
+    const uint8_t* cursor         = nullptr;
+    const uint8_t* bufferEnd      = nullptr;
+    size_t         prevEventLen   = 0;
+    uint32_t       tickOffset     = 0;
+    uint8_t        prevStatusCode = 0x00;
+
+
+    void checkRange() const {
+        if (cursor > bufferEnd) {
+            throw std::ios_base::failure(
+                "MiniMidi: Unexpected EOF in track! Cursor is " + std::to_string(cursor - bufferEnd)
+                + " bytes beyond the end of buffer!"
+            );
+        }
+    }
+
+    template<typename Func>
+    auto runningStatusMsg(const uint8_t curStatusCode, Func f) {
+        if (!prevEventLen) {
+            throw std::ios_base::failure(
+                "MiniMidi: Unexpected running status! Get status code: "
+                + std::to_string(curStatusCode) + " but previous event length is 0!"
+            );
+        }
+        if (cursor + prevEventLen - 1 > bufferEnd) {
+            throw std::ios_base::failure(
+                "MiniMidi: Unexpected EOF in running status! Cursor would be "
+                + std::to_string(cursor + prevEventLen - 1 - bufferEnd)
+                + " bytes beyond the end of buffer with previous event length "
+                + std::to_string(prevEventLen) + "!"
+            );
+        }
+        const auto curCursor = cursor;
+        cursor += prevEventLen - 1;
+        return f(tickOffset, prevStatusCode, curCursor, prevEventLen - 1);
+    }
+
+    template<typename Func>
+    auto sysExMsg(const uint8_t curStatusCode, Func f) {
+        prevStatusCode            = curStatusCode;
+        const uint8_t* prevBuffer = cursor;
+
+        // Skip status byte
+        cursor += 1;
+        prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
+
+        if (prevBuffer + prevEventLen > bufferEnd) {
+            throw std::ios_base::failure(
+                "MiniMidi: Unexpected EOF in SysEx Event! Cursor would be "
+                + std::to_string(cursor + prevEventLen - bufferEnd)
+                + " bytes beyond the end of buffer with previous event length "
+                + std::to_string(prevEventLen) + "!"
+            );
+        }
+        cursor = prevBuffer + prevEventLen;
+        return f(tickOffset, *prevBuffer, prevBuffer + 1, prevEventLen - 1);
+    }
+
+    template<typename Func>
+    void metaMsg(const uint8_t curStatusCode, Func f) {
+        // Meta message does not affect running status
+        const uint8_t* prevBuffer = cursor;
+
+        // Skip status byte and meta type byte
+        cursor += 2;
+        const auto eventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
+
+        if (prevBuffer + eventLen > bufferEnd) {
+            throw std::ios_base::failure(
+                "MiniMidi: Unexpected EOF in Meta Event! Cursor would be "
+                + std::to_string(cursor + eventLen - bufferEnd)
+                + " bytes beyond the end of buffer with previous event length "
+                + std::to_string(eventLen) + "!"
+            );
+        }
+        // The message data does not include the status byte,
+        // but the meta type byte is included
+        // this->emplace(tickOffset, *prevBuffer, prevBuffer + 1, eventLen - 1);
+        const auto* metaBegin = prevBuffer + 1;
+        if (lut::to_meta_type(*metaBegin) == message::MetaType::EndOfTrack) {
+            cursor = bufferEnd;
+        } else {
+            cursor = prevBuffer + eventLen;
+        }
+        return f(tickOffset, *prevBuffer, metaBegin, eventLen - 1);
+    }
+
+    template<typename Func>
+    void commonMsg(const uint8_t curStatusCode, Func f) {
+        prevStatusCode = curStatusCode;
+        prevEventLen   = lut::get_msg_length(lut::to_msg_type(curStatusCode));
+
+        if (cursor + prevEventLen > bufferEnd) {
+            throw std::ios_base::failure(
+                "MiniMidi: Unexpected EOF in MIDI Event! Cursor would be "
+                + std::to_string(cursor + prevEventLen - bufferEnd)
+                + " bytes beyond the end of buffer with previous event length "
+                + std::to_string(prevEventLen) + "!"
+            );
+        }
+        const auto curCursor = cursor;
+        cursor += prevEventLen;
+        f(tickOffset, curStatusCode, curCursor + 1, prevEventLen - 1);
+    }
+};
+
+template<typename T = container::SmallBytes>
+class TrackView {
+    const uint8_t* cursor = nullptr;
+    size_t         size   = 0;
+
+    class iterator : public MessageGenerator {
+        message::Message<T> msg{};
+
+    public:
+        iterator(const uint8_t* cursor, const size_t size) : MessageGenerator(cursor, size) {};
+        iterator(const uint8_t* begin, const uint8_t* end) : MessageGenerator(begin, end) {};
+        iterator(const iterator& other)     = default;
+        iterator(iterator&& other) noexcept = default;
+
+        bool operator==(const iterator&) const { return this->done(); };
+        bool operator!=(const iterator&) const { return !this->done(); };
+
+        message::Message<T>&       operator*() { return msg; };
+        const message::Message<T>& operator*() const { return msg; };
+
+        iterator& operator++() {
+            this->emplaceUsing([&](auto... args) {
+                std::destroy_at(&msg);
+                std::construct_at(&msg, args...);
+            });
+            return *this;
+        };
+    };
+
+public:
+    TrackView(const uint8_t* cursor, const size_t size) : cursor(cursor), size(size) {};
+
+    TrackView(const TrackView& other)     = default;
+    TrackView(TrackView&& other) noexcept = default;
+
+    iterator begin() const { return iterator(cursor, size); };
+    iterator end() const { return iterator(cursor + size, size); };
+};
+
 
 template<typename T = container::SmallBytes>
 class Track {
@@ -785,107 +957,11 @@ public:
 
     Track(const uint8_t* cursor, const size_t size) {
         messages.reserve(size / 3 + 100);
-        const uint8_t* bufferEnd = cursor + size;
-
-        uint32_t tickOffset     = 0;
-        uint8_t  prevStatusCode = 0x00;
-        size_t   prevEventLen   = 0;
-
-        while (cursor < bufferEnd) {
-            tickOffset += utils::read_variable_length(cursor);
-            // Running status
-            if (const uint8_t curStatusCode = *cursor; curStatusCode < 0x80) {
-                if (!prevEventLen) {
-                    throw std::ios_base::failure(
-                        "MiniMidi: Unexpected running status! Get status code: "
-                        + std::to_string(curStatusCode) + " but previous event length is 0!"
-                    );
-                }
-                if (cursor + prevEventLen - 1 > bufferEnd) {
-                    throw std::ios_base::failure(
-                        "MiniMidi: Unexpected EOF in running status! Cursor would be "
-                        + std::to_string(cursor + prevEventLen - 1 - bufferEnd)
-                        + " bytes beyond the end of buffer with previous event length "
-                        + std::to_string(prevEventLen) + "!"
-                    );
-                }
-                messages.emplace_back(tickOffset, prevStatusCode, cursor, prevEventLen - 1);
-                cursor += prevEventLen - 1;
-            }
-            // Meta message
-            else if (curStatusCode == 0xFF) {
-                // Meta message does not affect running status
-                // prevStatusCode = curStatusCode;
-                const uint8_t* prevBuffer = cursor;
-
-                // Skip status byte and meta type byte
-                cursor += 2;
-                auto eventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
-
-                if (prevBuffer + eventLen > bufferEnd) {
-                    throw std::ios_base::failure(
-                        "MiniMidi: Unexpected EOF in Meta Event! Cursor would be "
-                        + std::to_string(cursor + eventLen - bufferEnd)
-                        + " bytes beyond the end of buffer with previous event length "
-                        + std::to_string(eventLen) + "!"
-                    );
-                }
-                // The message data does not include the status byte,
-                // but the meta type byte is included
-                messages.emplace_back(tickOffset, *prevBuffer, prevBuffer + 1, eventLen - 1);
-
-                if (messages.back().template cast<message::Meta>().meta_type()
-                    == message::MetaType::EndOfTrack)
-                    break;
-
-                cursor = prevBuffer + eventLen;
-            }
-            // SysEx message
-            else if (curStatusCode == 0xF0) {
-                prevStatusCode            = curStatusCode;
-                const uint8_t* prevBuffer = cursor;
-
-                // Skip status byte
-                cursor += 1;
-                prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
-
-                if (prevBuffer + prevEventLen > bufferEnd) {
-                    throw std::ios_base::failure(
-                        "MiniMidi: Unexpected EOF in SysEx Event! Cursor would be "
-                        + std::to_string(cursor + prevEventLen - bufferEnd)
-                        + " bytes beyond the end of buffer with previous event length "
-                        + std::to_string(prevEventLen) + "!"
-                    );
-                }
-                messages.emplace_back(tickOffset, *prevBuffer, prevBuffer + 1, prevEventLen - 1);
-                cursor = prevBuffer + prevEventLen;
-            }
-            // Channel message or system common message
-            else {
-                prevStatusCode = curStatusCode;
-                prevEventLen
-                    // =
-                    // message::message_attr(message::status_to_message_type(curStatusCode)).length;
-                    = lut::get_msg_length(lut::to_msg_type(curStatusCode));
-
-                if (cursor + prevEventLen > bufferEnd) {
-                    throw std::ios_base::failure(
-                        "MiniMidi: Unexpected EOF in MIDI Event! Cursor would be "
-                        + std::to_string(cursor + prevEventLen - bufferEnd)
-                        + " bytes beyond the end of buffer with previous event length "
-                        + std::to_string(prevEventLen) + "!"
-                    );
-                }
-                messages.emplace_back(tickOffset, curStatusCode, cursor + 1, prevEventLen - 1);
-                cursor += prevEventLen;
-            }
-
-            if (cursor > bufferEnd) {
-                throw std::ios_base::failure(
-                    "MiniMidi: Unexpected EOF in track! Cursor is "
-                    + std::to_string(cursor - bufferEnd) + " bytes beyond the end of buffer!"
-                );
-            }
+        MessageGenerator generator(cursor, size);
+        while (!generator.done()) {
+            generator.emplaceUsing([&](auto... args) {
+                messages.emplace_back(args...);
+            });
         }
     };
 
@@ -1306,13 +1382,13 @@ std::string to_string(const message::ControlChange<T>& cc) {
 
 template<typename T>
 std::string to_string(const message::TrackName<T>& meta) {
-    const auto &data = meta.meta_value();
+    const auto& data = meta.meta_value();
     return std::string(data.begin(), data.end());
 }
 
 template<typename T>
 std::string to_string(const message::InstrumentName<T>& meta) {
-    const auto &data = meta.meta_value();
+    const auto& data = meta.meta_value();
     return std::string(data.begin(), data.end());
 }
 
@@ -1361,8 +1437,7 @@ std::string to_string(const message::Meta<T>& meta) {
 
 template<typename T>
 std::string to_string(const message::Message<T>& message) {
-    std::string output
-        = "time=" + std::to_string(message.time) + " | ";
+    std::string output = "time=" + std::to_string(message.time) + " | ";
     switch (message.type()) {
     case message::MessageType::NoteOn:
         return output + to_string(message.template cast<message::NoteOn>());
