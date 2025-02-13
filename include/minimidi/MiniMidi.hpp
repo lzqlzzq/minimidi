@@ -1185,7 +1185,7 @@ public:
         uint8_t                 divisionType    = 0,
         uint16_t                ticksPerQuarter = 960
     ) {
-        this->tracks          = track::Tracks(tracks);
+        this->tracks          = track::Tracks<T>(tracks);
         this->format          = format;
         this->divisionType    = divisionType;
         this->ticksPerQuarter = ticksPerQuarter;
