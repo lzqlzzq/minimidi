@@ -348,7 +348,7 @@ public:
     // constructor from begin and size
     template<typename Iter>
     Message(const uint32_t time, const uint8_t statusByte, Iter begin, size_t size) :
-        _data(begin, begin + size), time(time), statusByte(statusByte){};
+        _data(begin, size), time(time), statusByte(statusByte){};
 
     // constructor from initializer list
     Message(const uint32_t time, const uint8_t statusByte, std::initializer_list<uint8_t> list) :

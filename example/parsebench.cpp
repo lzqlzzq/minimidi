@@ -33,10 +33,6 @@ int main(int argc, char* argv[]) {
                     minimidi::file::MidiFile midifile{data};
                     ankerl::nanobench::doNotOptimizeAway(midifile);
                 })
-                .run("vector", [&data] {
-                    minimidi::file::MidiFile<std::vector<uint8_t>> midifile{data};
-                    ankerl::nanobench::doNotOptimizeAway(midifile);
-                })
             ;
         } catch (const char* e) {
             std::cout << e << std::endl;
