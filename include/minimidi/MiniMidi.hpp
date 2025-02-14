@@ -57,6 +57,14 @@ template<typename T>
 concept InitializerList = requires(T a) {
     { T{0x00, 0x01, 0x02} };
 };
+
+template<typename T>
+concept BeginSizeConstructor = requires(T a) {
+    { a.begin() };
+    { a.size() };
+    { T(a.begin(), a.size()) };
+};
+
 }   // namespace container
 
 
@@ -182,8 +190,8 @@ namespace message {
     MIDI_META_TYPE_MEMBER(KeySignature, 0x59)          \
     MIDI_META_TYPE_MEMBER(SequencerSpecificMeta, 0x7F) \
     MIDI_META_TYPE_MEMBER(Unknown, 0xFF)
-constexpr int16_t MIN_PITCHBEND = -8192;
-constexpr int16_t MAX_PITCHBEND = 8191;
+constexpr int16_t MIN_PITCH_BEND = -8192;
+constexpr int16_t MAX_PITCH_BEND = 8191;
 
 
 enum class MessageType : uint8_t {
@@ -323,7 +331,7 @@ template<typename T = container::SmallBytes>
     requires container::BasicArr<T>
 class Message {
 protected:
-    T _data;
+    T m_data;
 
 public:
     uint32_t time{};
@@ -333,41 +341,49 @@ public:
 
     // copy constructor
     Message(const uint32_t time, const uint8_t statusByte, const T& data) :
-        _data(data.begin(), data.end()), time(time), statusByte(statusByte) {};
+        m_data(data.begin(), data.end()), time(time), statusByte(statusByte) {};
 
     // move constructor
     Message(const uint32_t time, const uint8_t statusByte, T&& data)
         requires container::MoveConstructible<T>
-        : _data(std::move(data)), time(time), statusByte(statusByte) {};
+        : m_data(std::move(data)), time(time), statusByte(statusByte) {};
 
     // constructor from begin and end
     template<container::RandomIterator Iter>
     Message(const uint32_t time, const uint8_t statusByte, Iter begin, Iter end) :
-        _data(begin, end), time(time), statusByte(statusByte){};
+        m_data(begin, end), time(time), statusByte(statusByte){};
 
     // constructor from begin and size
-    template<typename Iter>
-    Message(const uint32_t time, const uint8_t statusByte, Iter begin, size_t size) :
-        _data(begin, size), time(time), statusByte(statusByte){};
+    template<container::RandomIterator Iter>
+    Message(const uint32_t time, const uint8_t statusByte, Iter begin, size_t size)
+        requires container::BeginSizeConstructor<T>
+        : m_data(begin, size), time(time), statusByte(statusByte){};
+
+    // constructor from begin and size for container that does not support BeginSizeConstructor
+    // like std::vector
+    template<container::RandomIterator Iter>
+    Message(const uint32_t time, const uint8_t statusByte, Iter begin, size_t size)
+        requires(!container::BeginSizeConstructor<T>)
+        : m_data(begin, begin + size), time(time), statusByte(statusByte){};
 
     // constructor from initializer list
     Message(const uint32_t time, const uint8_t statusByte, std::initializer_list<uint8_t> list) :
-        _data(list), time(time), statusByte(statusByte) {};
+        m_data(list), time(time), statusByte(statusByte) {};
 
     // copy constructor from another message with possibly different data type
     template<typename U>
     explicit Message(const Message<U>& other) :
-        _data(other.data().begin(), other.data().end()), time(other.time),
+        m_data(other.data().begin(), other.data().end()), time(other.time),
         statusByte(other.statusByte){};
 
     Message(const Message& other) :
-        _data(other._data.begin(), other._data.end()), time(other.time),
+        m_data(other.m_data.begin(), other.m_data.end()), time(other.time),
         statusByte(other.statusByte) {};
 
     // move constructor from another message with same data type
     Message(Message&& other) noexcept
         requires container::MoveConstructible<T>
-        : _data(std::move(other._data)), time(other.time), statusByte(other.statusByte) {};
+        : m_data(std::move(other.m_data)), time(other.time), statusByte(other.statusByte) {};
 
     // Zero Cost Down casting to derived class
     template<template<typename> typename U>
@@ -382,7 +398,7 @@ public:
         return reinterpret_cast<U<T>&>(*this);
     }
 
-    [[nodiscard]] const T& data() const { return _data; };
+    [[nodiscard]] const T& data() const { return m_data; };
 
     [[nodiscard]] MessageType type() const { return lut::to_msg_type(statusByte); };
 
@@ -521,15 +537,15 @@ class PitchBend : public Message<T> {
     PitchBend(const uint32_t time, const uint8_t channel, const int16_t value)
         requires container::InitializerList<T>: Message<T>(
             time, lut::to_status_byte(status, channel), {
-                static_cast<uint8_t>((value - MIN_PITCHBEND) & 0x7F),
-                static_cast<uint8_t>((value - MIN_PITCHBEND) >> 7)
+                static_cast<uint8_t>((value - MIN_PITCH_BEND) & 0x7F),
+                static_cast<uint8_t>((value - MIN_PITCH_BEND) >> 7)
             }
         ) {};
     // clang-format on
 
     [[nodiscard]] int16_t pitch_bend() const {
         return (static_cast<int>(this->_data[0]) | static_cast<int>(this->_data[1] << 7))
-               + MIN_PITCHBEND;
+               + MIN_PITCH_BEND;
     };
 };
 
@@ -775,31 +791,6 @@ namespace track {
 const std::string MTRK("MTrk");
 
 class MessageGenerator {
-public:
-    MessageGenerator(const uint8_t* begin, const uint8_t* end) : cursor(begin), bufferEnd(end) {}
-    MessageGenerator(const uint8_t* begin, const size_t size) :
-        cursor(begin), bufferEnd(begin + size) {}
-
-    [[nodiscard]] bool done() const { return cursor >= bufferEnd; }
-
-    template<typename Func>
-    auto emplaceUsing(Func f) {
-        checkRange();
-        tickOffset += utils::read_variable_length(cursor);
-        switch (const uint8_t curStatusCode = *cursor; curStatusCode) {
-        case 0xF0: return sysExMsg(curStatusCode, f);
-        case 0xFF: return metaMsg(curStatusCode, f);
-        default: {
-            if (curStatusCode < 0x80) {
-                return runningStatusMsg(curStatusCode, f);
-            } else {
-                return commonMsg(curStatusCode, f);
-            }
-        }
-        }
-    }
-
-
 protected:
     const uint8_t* cursor         = nullptr;
     const uint8_t* bufferEnd      = nullptr;
@@ -807,8 +798,34 @@ protected:
     uint32_t       tickOffset     = 0;
     uint8_t        prevStatusCode = 0x00;
 
+public:
+    MessageGenerator(const uint8_t* begin, const uint8_t* end) : cursor(begin), bufferEnd(end) {}
 
-    void checkRange() const {
+    MessageGenerator(const uint8_t* begin, const size_t size) :
+        cursor(begin), bufferEnd(begin + size) {}
+
+    [[nodiscard]] bool done() const { return cursor >= bufferEnd; }
+
+    template<typename Func>
+    auto emplace_using(Func f) {
+        check_range();
+        tickOffset += utils::read_variable_length(cursor);
+        switch (const uint8_t curStatusCode = *cursor; curStatusCode) {
+        case 0xF0: return sysex_msg(curStatusCode, f);
+        case 0xFF: return meta_msg(curStatusCode, f);
+        default: {
+            if (curStatusCode < 0x80) {
+                return running_status_msg(curStatusCode, f);
+            } else {
+                return common_msg(curStatusCode, f);
+            }
+        }
+        }
+    }
+
+
+protected:
+    void check_range() const {
         if (cursor > bufferEnd) {
             throw std::ios_base::failure(
                 "MiniMidi: Unexpected EOF in track! Cursor is " + std::to_string(cursor - bufferEnd)
@@ -818,7 +835,7 @@ protected:
     }
 
     template<typename Func>
-    auto runningStatusMsg(const uint8_t curStatusCode, Func f) {
+    auto running_status_msg(const uint8_t curStatusCode, Func f) {
         if (!prevEventLen) {
             throw std::ios_base::failure(
                 "MiniMidi: Unexpected running status! Get status code: "
@@ -839,7 +856,7 @@ protected:
     }
 
     template<typename Func>
-    auto sysExMsg(const uint8_t curStatusCode, Func f) {
+    auto sysex_msg(const uint8_t curStatusCode, Func f) {
         prevStatusCode            = curStatusCode;
         const uint8_t* prevBuffer = cursor;
 
@@ -860,7 +877,7 @@ protected:
     }
 
     template<typename Func>
-    void metaMsg(const uint8_t curStatusCode, Func f) {
+    void meta_msg(const uint8_t curStatusCode, Func f) {
         // Meta message does not affect running status
         const uint8_t* prevBuffer = cursor;
 
@@ -889,7 +906,7 @@ protected:
     }
 
     template<typename Func>
-    void commonMsg(const uint8_t curStatusCode, Func f) {
+    void common_msg(const uint8_t curStatusCode, Func f) {
         prevStatusCode = curStatusCode;
         prevEventLen   = lut::get_msg_length(lut::to_msg_type(curStatusCode));
 
@@ -903,7 +920,9 @@ protected:
         }
         const auto curCursor = cursor;
         cursor += prevEventLen;
-        f(tickOffset, curStatusCode, curCursor + 1, prevEventLen - 1);
+        // f(tickOffset, curStatusCode, curCursor + 1, prevEventLen - 1);
+        // prevEventLen - 1 <= 2, and there must be a EndOfTrack after the last event
+        return f(tickOffset, curStatusCode, curCursor + 1, 2);
     }
 };
 
@@ -928,7 +947,7 @@ class TrackView {
         const message::Message<T>& operator*() const { return msg; };
 
         iterator& operator++() {
-            this->emplaceUsing([&](auto... args) {
+            this->emplace_using([&](auto... args) {
                 std::destroy_at(&msg);
                 std::construct_at(&msg, args...);
             });
@@ -958,11 +977,15 @@ public:
     Track(const uint8_t* cursor, const size_t size) {
         messages.reserve(size / 3 + 100);
         MessageGenerator generator(cursor, size);
+        // message::Message<T> tmp{};
         while (!generator.done()) {
-            generator.emplaceUsing([&](auto... args) {
+            generator.emplace_using([&](auto... args) {
                 messages.emplace_back(args...);
+                // std::destroy_at(&tmp);
+                // std::construct_at(&tmp, args...);
             });
         }
+        // messages.emplace_back(tmp);
     };
 
     explicit Track(message::Messages<T>&& message) {
@@ -1261,8 +1284,8 @@ public:
             uint32_t prevTime   = 0;
             uint8_t  prevStatus = 0x00;
             for (const auto& msg : track.messages) {
-                const uint32_t curTime   = msg.get_time();
-                const uint8_t  curStatus = msg.get_status_byte();
+                const uint32_t curTime   = msg.time;
+                const uint8_t  curStatus = msg.statusByte;
                 // 1. write msg variable length
                 utils::write_variable_length(bytes, curTime - prevTime);
                 prevTime = curTime;
@@ -1272,7 +1295,7 @@ public:
                     bytes.emplace_back(curStatus);
                 }
                 // 3. write msg btyes
-                const auto& msg_data = msg.get_data();
+                const auto& msg_data = msg.data();
                 utils::write_iter(bytes, msg_data.cbegin(), msg_data.cend());
                 prevStatus = curStatus;
             }

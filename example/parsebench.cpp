@@ -24,13 +24,18 @@ int main(int argc, char* argv[]) {
         try {
             const auto data = read_file(filename);
             ankerl::nanobench::Bench()
-                .minEpochIterations(100)
+                .minEpochIterations(200)
                 .run("span", [&data] {
                     minimidi::file::MidiFile<std::span<const uint8_t>> midifile{data};
                     ankerl::nanobench::doNotOptimizeAway(midifile);
                 })
                 .run("svector", [&data] {
                     minimidi::file::MidiFile midifile{data};
+                    ankerl::nanobench::doNotOptimizeAway(midifile);
+                })
+                .minEpochIterations(20)
+                .run("vector", [&data] {
+                    minimidi::file::MidiFile<std::vector<uint8_t>> midifile{data};
                     ankerl::nanobench::doNotOptimizeAway(midifile);
                 })
             ;
