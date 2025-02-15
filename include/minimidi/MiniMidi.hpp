@@ -341,12 +341,12 @@ public:
 
     // copy constructor
     Message(const uint32_t time, const uint8_t statusByte, const T& data) :
-        m_data(data.begin(), data.end()), time(time), statusByte(statusByte) {};
+        m_data(data.begin(), data.end()), time(time), statusByte(statusByte){};
 
     // move constructor
     Message(const uint32_t time, const uint8_t statusByte, T&& data)
         requires container::MoveConstructible<T>
-        : m_data(std::move(data)), time(time), statusByte(statusByte) {};
+        : m_data(std::move(data)), time(time), statusByte(statusByte){};
 
     // constructor from begin and end
     template<container::RandomIterator Iter>
@@ -368,7 +368,7 @@ public:
 
     // constructor from initializer list
     Message(const uint32_t time, const uint8_t statusByte, std::initializer_list<uint8_t> list) :
-        m_data(list), time(time), statusByte(statusByte) {};
+        m_data(list), time(time), statusByte(statusByte){};
 
     // copy constructor from another message with possibly different data type
     template<typename U>
@@ -378,12 +378,12 @@ public:
 
     Message(const Message& other) :
         m_data(other.m_data.begin(), other.m_data.end()), time(other.time),
-        statusByte(other.statusByte) {};
+        statusByte(other.statusByte){};
 
     // move constructor from another message with same data type
     Message(Message&& other) noexcept
         requires container::MoveConstructible<T>
-        : m_data(std::move(other.m_data)), time(other.time), statusByte(other.statusByte) {};
+        : m_data(std::move(other.m_data)), time(other.time), statusByte(other.statusByte){};
 
     // Zero Cost Down casting to derived class
     template<template<typename> typename U>
@@ -414,7 +414,7 @@ public:
     NoteOn() = default;
     NoteOn(const uint32_t time, const uint8_t channel, const uint8_t pitch, const uint8_t velocity)
         requires container::InitializerList<T>
-        : Message<T>(time, lut::to_status_byte(type, channel), {pitch, velocity}) {};
+        : Message<T>(time, lut::to_status_byte(type, channel), {pitch, velocity}){};
 
     [[nodiscard]] uint8_t pitch() const { return this->_data[0]; };
     [[nodiscard]] uint8_t velocity() const { return this->_data[1]; };
@@ -429,7 +429,7 @@ public:
     NoteOff() = default;
     NoteOff(const uint32_t time, const uint8_t channel, const uint8_t pitch, const uint8_t velocity)
         requires container::InitializerList<T>
-        : Message<T>(time, lut::to_status_byte(type, channel), {pitch, velocity}) {};
+        : Message<T>(time, lut::to_status_byte(type, channel), {pitch, velocity}){};
 
     [[nodiscard]] uint8_t pitch() const { return this->_data[0]; };
     [[nodiscard]] uint8_t velocity() const { return this->_data[1]; };
@@ -449,7 +449,7 @@ public:
         const uint8_t  controlValue
     )
         requires container::InitializerList<T>
-        : Message<T>(time, lut::to_status_byte(type, channel), {controlNumber, controlValue}) {};
+        : Message<T>(time, lut::to_status_byte(type, channel), {controlNumber, controlValue}){};
 
     [[nodiscard]] uint8_t control_number() const { return this->_data[0]; };
     [[nodiscard]] uint8_t control_value() const { return this->_data[1]; };
@@ -463,7 +463,7 @@ public:
 
     ProgramChange() = default;
     ProgramChange(const uint32_t time, const uint8_t channel, const uint8_t program) :
-        Message<T>(time, lut::to_status_byte(type, channel), {program}) {};
+        Message<T>(time, lut::to_status_byte(type, channel), {program}){};
 
     [[nodiscard]] uint8_t program() const { return this->_data[0]; };
 };
@@ -501,7 +501,7 @@ public:
     QuarterFrame() = default;
     QuarterFrame(const uint32_t time, const uint8_t type, const uint8_t value)
         requires container::InitializerList<T>
-        : Message<T>(time, status, {static_cast<uint8_t>((type << 4) | value)}) {};
+        : Message<T>(time, status, {static_cast<uint8_t>((type << 4) | value)}){};
 
     [[nodiscard]] uint8_t frame_type() const { return this->_data[0] >> 4; };
     [[nodiscard]] uint8_t frame_value() const { return this->_data[0] & 0x0F; };
@@ -689,7 +689,7 @@ struct Text : Meta<T> {
 
     Text() = default;
 
-    Text(const uint32_t time, const std::string& text) : Meta<T>(time, meta_type, text) {};
+    Text(const uint32_t time, const std::string& text) : Meta<T>(time, meta_type, text){};
 };
 
 template<typename T = container::SmallBytes>
@@ -698,7 +698,7 @@ struct TrackName : Meta<T> {
 
     TrackName() = default;
 
-    TrackName(const uint32_t time, const std::string& name) : Meta<T>(time, meta_type, name) {};
+    TrackName(const uint32_t time, const std::string& name) : Meta<T>(time, meta_type, name){};
 };
 
 template<typename T = container::SmallBytes>
@@ -707,8 +707,7 @@ struct InstrumentName : Meta<T> {
 
     InstrumentName() = default;
 
-    InstrumentName(const uint32_t time, const std::string& name) :
-        Meta<T>(time, meta_type, name) {};
+    InstrumentName(const uint32_t time, const std::string& name) : Meta<T>(time, meta_type, name){};
 };
 
 template<typename T = container::SmallBytes>
@@ -717,7 +716,7 @@ struct Lyric : Meta<T> {
 
     Lyric() = default;
 
-    Lyric(const uint32_t time, const std::string& lyric) : Meta<T>(time, meta_type, lyric) {};
+    Lyric(const uint32_t time, const std::string& lyric) : Meta<T>(time, meta_type, lyric){};
 };
 
 template<typename T = container::SmallBytes>
@@ -726,7 +725,7 @@ struct Marker : Meta<T> {
 
     Marker() = default;
 
-    Marker(const uint32_t time, const std::string& marker) : Meta<T>(time, meta_type, marker) {};
+    Marker(const uint32_t time, const std::string& marker) : Meta<T>(time, meta_type, marker){};
 };
 
 template<typename T = container::SmallBytes>
@@ -736,7 +735,7 @@ struct CuePoint : Meta<T> {
     CuePoint() = default;
 
     CuePoint(const uint32_t time, const std::string& cuePoint) :
-        Meta<T>(time, meta_type, cuePoint) {};
+        Meta<T>(time, meta_type, cuePoint){};
 };
 
 template<typename T = container::SmallBytes>
@@ -927,16 +926,15 @@ protected:
 };
 
 template<typename T = container::SmallBytes>
-class TrackView {
+struct TrackView {
     const uint8_t* cursor = nullptr;
     size_t         size   = 0;
 
     class iterator : public MessageGenerator {
         message::Message<T> msg{};
-
     public:
-        iterator(const uint8_t* cursor, const size_t size) : MessageGenerator(cursor, size) {};
-        iterator(const uint8_t* begin, const uint8_t* end) : MessageGenerator(begin, end) {};
+        iterator(const uint8_t* cursor, const size_t size) : MessageGenerator(cursor, size){};
+        iterator(const uint8_t* begin, const uint8_t* end) : MessageGenerator(begin, end){};
         iterator(const iterator& other)     = default;
         iterator(iterator&& other) noexcept = default;
 
@@ -955,8 +953,7 @@ class TrackView {
         };
     };
 
-public:
-    TrackView(const uint8_t* cursor, const size_t size) : cursor(cursor), size(size) {};
+    TrackView(const uint8_t* cursor, const size_t size) : cursor(cursor), size(size){};
 
     TrackView(const TrackView& other)     = default;
     TrackView(TrackView&& other) noexcept = default;
@@ -970,9 +967,9 @@ template<typename T = container::SmallBytes>
 class Track {
 public:
     message::Messages<T> messages;
-    Track() = default;
-    Track(Track<T>&& other) noexcept : messages(std::move(other.messages)) {};
-    Track(const Track<T>& other) : messages(other.messages.begin(), other.messages.end()) {};
+                         Track() = default;
+                         Track(Track<T>&& other) noexcept : messages(std::move(other.messages)){};
+    Track(const Track<T>& other) : messages(other.messages.begin(), other.messages.end()){};
 
     Track(const uint8_t* cursor, const size_t size) {
         messages.reserve(size / 3 + 100);
@@ -987,6 +984,8 @@ public:
         }
         // messages.emplace_back(tmp);
     };
+
+    explicit Track(const TrackView<T>& view) : Track(view.cursor, view.size){};
 
     explicit Track(message::Messages<T>&& message) {
         this->messages = std::vector(std::move(message));
@@ -1065,7 +1064,7 @@ using Tracks = std::vector<Track<T>>;
 
 
 namespace file {
-const std::string MTHD("MThd");
+constexpr static std::string MTHD("MThd");
 
 #define MIDI_FORMAT                    \
     MIDI_FORMAT_MEMBER(SingleTrack, 0) \
@@ -1102,11 +1101,9 @@ inline MidiFormat read_midiformat(const uint16_t data) {
     }
 };
 
-template<typename T = container::SmallBytes>
-class MidiFile {
-public:
-    MidiFormat format;
-    uint16_t   divisionType : 1;
+struct MidiFileHeader {
+    MidiFormat format{};
+    uint16_t   divisionType : 1 {};
 
     union {
         struct {
@@ -1119,17 +1116,33 @@ public:
         };
     };
 
-    track::Tracks<T> tracks;
+    constexpr static size_t HEADER_LENGTH = 14;
 
-    // MidiFile() = default;
+    MidiFileHeader() = default;
 
-    explicit MidiFile(const uint8_t* const data, const size_t size) {
-        if (size < 4) {
-            throw std::ios_base::failure("MiniMidi: Invaild midi file! File size is less than 4!");
+    MidiFileHeader(
+        const MidiFormat format, const uint8_t divisionType, const uint16_t ticksPerQuarter
+    ) : format(format), divisionType(divisionType), ticksPerQuarter(ticksPerQuarter){};
+
+    MidiFileHeader(
+        const MidiFormat format,
+        const uint8_t    divisionType,
+        const uint8_t    negativeSmpte,
+        const uint8_t    ticksPerFrame
+    ) :
+        format(format), divisionType(divisionType), negativeSmpte(negativeSmpte),
+        ticksPerFrame(ticksPerFrame){};
+
+    MidiFileHeader(const uint8_t* data, const size_t size) {
+        if (size < HEADER_LENGTH) {   // clang-format off
+            throw std::ios_base::failure(
+                "MiniMidi: Invaild midi file! File size is less than "
+                + std::to_string(HEADER_LENGTH) + "!"
+            );   // clang-format on
         }
-        const uint8_t* cursor    = data;
-        const uint8_t* bufferEnd = cursor + size;
+        const uint8_t* cursor = data;
 
+        // Check file begin with "MThd"
         if (std::string(reinterpret_cast<const char*>(cursor), 4) != MTHD) {
             throw std::ios_base::failure("MiniMidi: Invaild midi file! File header is not MThd!");
         }
@@ -1139,19 +1152,46 @@ public:
                 + std::to_string(chunkLen) + "!"
             );
         }
-        this->format            = read_midiformat(utils::read_msb_bytes(cursor + 8, 2));
-        const uint16_t trackNum = utils::read_msb_bytes(cursor + 10, 2);
-        this->divisionType      = ((*(cursor + 12)) & 0x80) >> 7;
-        this->ticksPerQuarter   = (((*(cursor + 12)) & 0x7F) << 8) + (*(cursor + 13));
+        this->format          = read_midiformat(utils::read_msb_bytes(cursor + 8, 2));
+        this->divisionType    = ((*(cursor + 12)) & 0x80) >> 7;
+        this->ticksPerQuarter = (((*(cursor + 12)) & 0x7F) << 8) + (*(cursor + 13));
+    }
+};
 
-        cursor += 14;
-        tracks.reserve(trackNum);
-        for (int i = 0; i < trackNum; ++i) {
-            // Skip unknown chunk
+template<typename T = container::SmallBytes>
+struct MidiFileView : MidiFileHeader {
+    const uint8_t* cursor    = nullptr;
+    const uint8_t* bufferEnd = nullptr;
+    size_t         trackNum  = 0;
+
+    MidiFileView() = default;
+    MidiFileView(const uint8_t* data, const size_t size) : MidiFileHeader(data, size) {
+        this->cursor    = data + HEADER_LENGTH;
+        this->bufferEnd = data + size;
+        this->trackNum  = utils::read_msb_bytes(data + 10, 2);
+    }
+    MidiFileView(const container::Bytes& data) : MidiFileView(data.data(), data.size()){};
+
+private:
+    class iterator {
+        const uint8_t* cursor    = nullptr;
+        const uint8_t* bufferEnd = nullptr;
+        size_t         trackIdx  = 0;
+        size_t         trackNum  = 0;
+        size_t         chunkLen  = 0;
+
+        iterator() = default;
+
+        iterator(const uint8_t* cursor, const uint8_t* bufferEnd, const size_t trackNum) :
+            cursor(cursor), bufferEnd(bufferEnd), trackNum(trackNum) {
+            parse_chunk_len();
+        };
+
+
+        void parse_chunk_len() {
             while (std::string(reinterpret_cast<const char*>(cursor), 4) != track::MTRK) {
-                const size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
-
-                if (cursor + chunkLen + 8 > bufferEnd) {
+                const size_t tmpLen = utils::read_msb_bytes(cursor + 4, 4);
+                if (cursor + tmpLen + 8 > bufferEnd) {
                     throw std::ios_base::failure(
                         "MiniMidi: Unexpected EOF in file! Cursor is "
                         + std::to_string(cursor + chunkLen + 8 - bufferEnd)
@@ -1159,60 +1199,71 @@ public:
                         + std::to_string(chunkLen) + "!"
                     );
                 }
-                cursor += (8 + chunkLen);
+                cursor += (8 + tmpLen);
             }
-
-            const size_t chunkLen = utils::read_msb_bytes(cursor + 4, 4);
-
-            if (cursor + chunkLen + 8 > bufferEnd) {
-                throw std::ios_base::failure(
-                    "MiniMidi: Unexpected EOF in file! Cursor is "
-                    + std::to_string(cursor + chunkLen + 8 - bufferEnd)
-                    + " bytes beyond the end of buffer with chunk length "
-                    + std::to_string(chunkLen) + "!"
-                );
-            }
-
-            this->tracks.emplace_back(cursor + 8, chunkLen);
-            cursor += (8 + chunkLen);
+            chunkLen = utils::read_msb_bytes(cursor + 4, 4);
         }
+
+        [[nodiscard]] bool done() const { return cursor >= bufferEnd || trackIdx >= trackNum; }
+
+    public:
+        friend class MidiFileView;
+
+        track::TrackView<T> operator*() { return {cursor + 8, chunkLen}; };
+
+        iterator& operator++() {
+            cursor += (8 + chunkLen);
+            trackIdx++;
+            if (cursor >= bufferEnd || trackIdx >= trackNum) { return *this; }
+            parse_chunk_len();
+            return *this;
+        }
+
+        bool operator==(const iterator&) const { return done(); };
+        bool operator!=(const iterator&) const { return !done(); };
     };
 
-    explicit MidiFile(const container::Bytes& data) : MidiFile(data.data(), data.size()) {};
+public:
+    iterator begin() const { return iterator(cursor, bufferEnd, trackNum); };
+    iterator end() const { return iterator(); };
+};
+
+template<typename T = container::SmallBytes>
+struct MidiFile : MidiFileHeader {
+    track::Tracks<T> tracks;
+
+    MidiFile() = default;
+
+    explicit MidiFile(const MidiFileView<T>& view) :
+        MidiFileHeader(view.format, view.divisionType, view.ticksPerQuarter) {
+        tracks.reserve(view.trackNum);
+        for (auto track_view : view) { tracks.emplace_back(track_view); }
+    }
+
+    MidiFile(const uint8_t* const data, const size_t size) :
+        MidiFile(MidiFileView<T>(data, size)){};
+
+    explicit MidiFile(const container::Bytes& data) : MidiFile(data.data(), data.size()){};
 
     explicit MidiFile(
         MidiFormat format          = MidiFormat::MultiTrack,
         uint8_t    divisionType    = 0,
         uint16_t   ticksPerQuarter = 960
-    ) {
-        this->format          = format;
-        this->divisionType    = divisionType;
-        this->ticksPerQuarter = ticksPerQuarter;
-    };
+    ) : MidiFileHeader(format, divisionType, ticksPerQuarter){};
 
     explicit MidiFile(
         track::Tracks<T>&& tracks,
         MidiFormat         format          = MidiFormat::MultiTrack,
         uint8_t            divisionType    = 0,
         uint16_t           ticksPerQuarter = 960
-    ) {
-        this->tracks          = tracks;
-        this->format          = format;
-        this->divisionType    = divisionType;
-        this->ticksPerQuarter = ticksPerQuarter;
-    };
+    ) : MidiFileHeader(format, divisionType, ticksPerQuarter), tracks(std::move(tracks)){};
 
     explicit MidiFile(
         const track::Tracks<T>& tracks,
         MidiFormat              format          = MidiFormat::MultiTrack,
         uint8_t                 divisionType    = 0,
         uint16_t                ticksPerQuarter = 960
-    ) {
-        this->tracks          = track::Tracks<T>(tracks);
-        this->format          = format;
-        this->divisionType    = divisionType;
-        this->ticksPerQuarter = ticksPerQuarter;
-    };
+    ) : MidiFileHeader(format, divisionType, ticksPerQuarter), tracks(tracks){};
 
     static MidiFile from_file(const std::string& filepath) {
         FILE* filePtr = fopen(filepath.c_str(), "rb");

@@ -24,19 +24,67 @@ int main(int argc, char* argv[]) {
         try {
             const auto data = read_file(filename);
             ankerl::nanobench::Bench()
-                .minEpochIterations(200)
-                .run("span", [&data] {
-                    minimidi::file::MidiFile<std::span<const uint8_t>> midifile{data};
-                    ankerl::nanobench::doNotOptimizeAway(midifile);
+                .minEpochIterations(500)
+                .run("[view] span", [&data] {
+                    minimidi::file::MidiFileView<std::span<const uint8_t>> view{data};
+                    size_t result = 0;
+                    for(const auto& track : view) {
+                        for(const auto& msg : track) {
+                            result += msg.statusByte;
+                        }
+                    }
+                    ankerl::nanobench::doNotOptimizeAway(result);
                 })
-                .run("svector", [&data] {
-                    minimidi::file::MidiFile midifile{data};
-                    ankerl::nanobench::doNotOptimizeAway(midifile);
+                .run("[raw] span", [&data] {
+                    minimidi::file::MidiFile<std::span<const uint8_t>> midi{data};
+                    size_t result = 0;
+                    for(const auto& track : midi.tracks) {
+                        for(const auto& msg : track.messages) {
+                            result += msg.statusByte;
+                        }
+                    }
+                    ankerl::nanobench::doNotOptimizeAway(result);
+                })
+                .run("[view] svector", [&data] {
+                    minimidi::file::MidiFileView<std::span<const uint8_t>> view{data};
+                    size_t result = 0;
+                    for(const auto& track : view) {
+                        for(const auto& msg : track) {
+                            result += msg.statusByte;
+                        }
+                    }
+                    ankerl::nanobench::doNotOptimizeAway(result);
+                })
+                .run("[raw] svector", [&data] {
+                    minimidi::file::MidiFile<std::span<const uint8_t>> midi{data};
+                    size_t result = 0;
+                    for(const auto& track : midi.tracks) {
+                        for(const auto& msg : track.messages) {
+                            result += msg.statusByte;
+                        }
+                    }
+                    ankerl::nanobench::doNotOptimizeAway(result);
                 })
                 .minEpochIterations(20)
-                .run("vector", [&data] {
-                    minimidi::file::MidiFile<std::vector<uint8_t>> midifile{data};
-                    ankerl::nanobench::doNotOptimizeAway(midifile);
+                .run("[view] vector", [&data] {
+                    minimidi::file::MidiFileView<std::vector<uint8_t>> view{data};
+                    size_t result = 0;
+                    for(const auto& track : view) {
+                        for(const auto& msg : track) {
+                            result += msg.statusByte;
+                        }
+                    }
+                    ankerl::nanobench::doNotOptimizeAway(result);
+                })
+                .run("[raw] vector", [&data] {
+                    minimidi::file::MidiFile<std::vector<uint8_t>> midi{data};
+                    size_t result = 0;
+                    for(const auto& track : midi.tracks) {
+                        for(const auto& msg : track.messages) {
+                            result += msg.statusByte;
+                        }
+                    }
+                    ankerl::nanobench::doNotOptimizeAway(result);
                 })
             ;
         } catch (const char* e) {
