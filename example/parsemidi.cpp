@@ -29,7 +29,7 @@ int main(int argc, char* argv[]) {
             fread(data.data(), 1, fileLen, filePtr);
             fclose(filePtr);
 
-            const minimidi::file::MidiFile midifile{data};
+            const minimidi::MidiFile midifile{data};
             std::cout << minimidi::to_string(midifile) << std::endl;
         } catch (const char* e) {
             std::cout << e << std::endl;

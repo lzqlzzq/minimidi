@@ -17,6 +17,16 @@ std::vector<uint8_t> read_file(const std::string& filename) {
     return data;
 }
 
+template<typename T>
+void proc(const minimidi::Message<T>& msg, size_t& result) {
+    const auto type = msg.type();
+    if (type == minimidi::MessageType::NoteOn) {
+        result += msg.template cast<minimidi::NoteOn>().velocity();
+    } else if (type == minimidi::MessageType::NoteOff) {
+        result += msg.template cast<minimidi::NoteOff>().pitch();
+    }
+}
+
 int main(int argc, char* argv[]) {
     if (argc == 2) {
         std::string filename = std::string(argv[1]);
@@ -26,62 +36,62 @@ int main(int argc, char* argv[]) {
             ankerl::nanobench::Bench()
                 .minEpochIterations(500)
                 .run("[view] span", [&data] {
-                    minimidi::file::MidiFileView<std::span<const uint8_t>> view{data};
+                    minimidi::MidiFileView<std::span<const uint8_t>> view{data};
                     size_t result = 0;
                     for(const auto& track : view) {
                         for(const auto& msg : track) {
-                            result += msg.statusByte;
+                            proc(msg, result);
                         }
                     }
                     ankerl::nanobench::doNotOptimizeAway(result);
                 })
                 .run("[raw] span", [&data] {
-                    minimidi::file::MidiFile<std::span<const uint8_t>> midi{data};
+                    minimidi::MidiFile<std::span<const uint8_t>> midi{data};
                     size_t result = 0;
                     for(const auto& track : midi.tracks) {
                         for(const auto& msg : track.messages) {
-                            result += msg.statusByte;
+                            proc(msg, result);
                         }
                     }
                     ankerl::nanobench::doNotOptimizeAway(result);
                 })
                 .run("[view] svector", [&data] {
-                    minimidi::file::MidiFileView<std::span<const uint8_t>> view{data};
+                    minimidi::MidiFileView view{data};
                     size_t result = 0;
                     for(const auto& track : view) {
                         for(const auto& msg : track) {
-                            result += msg.statusByte;
+                            proc(msg, result);
                         }
                     }
                     ankerl::nanobench::doNotOptimizeAway(result);
                 })
                 .run("[raw] svector", [&data] {
-                    minimidi::file::MidiFile<std::span<const uint8_t>> midi{data};
+                    minimidi::MidiFile midi{data};
                     size_t result = 0;
                     for(const auto& track : midi.tracks) {
                         for(const auto& msg : track.messages) {
-                            result += msg.statusByte;
+                            proc(msg, result);
                         }
                     }
                     ankerl::nanobench::doNotOptimizeAway(result);
                 })
                 .minEpochIterations(20)
                 .run("[view] vector", [&data] {
-                    minimidi::file::MidiFileView<std::vector<uint8_t>> view{data};
+                    minimidi::MidiFileView<std::vector<uint8_t>> view{data};
                     size_t result = 0;
                     for(const auto& track : view) {
                         for(const auto& msg : track) {
-                            result += msg.statusByte;
+                            proc(msg, result);
                         }
                     }
                     ankerl::nanobench::doNotOptimizeAway(result);
                 })
                 .run("[raw] vector", [&data] {
-                    minimidi::file::MidiFile<std::vector<uint8_t>> midi{data};
+                    minimidi::MidiFile<std::vector<uint8_t>> midi{data};
                     size_t result = 0;
                     for(const auto& track : midi.tracks) {
                         for(const auto& msg : track.messages) {
-                            result += msg.statusByte;
+                            proc(msg, result);
                         }
                     }
                     ankerl::nanobench::doNotOptimizeAway(result);
