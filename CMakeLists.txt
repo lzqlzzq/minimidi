@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.20)
 project(minimidi)
 
 option(BUILD_EXAMPLES "Build examples" OFF)
-option(USE_MIMALLOC "Use mimalloc" OFF)
 
 add_library(minimidi INTERFACE)
 add_library(minimidi::minimidi ALIAS minimidi)
@@ -11,20 +10,6 @@ add_library(minimidi::minimidi ALIAS minimidi)
 # concepts will be replaced by SFINAE in the future
 target_compile_features(minimidi INTERFACE cxx_std_20)
 target_include_directories(minimidi INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-if(USE_MIMALLOC)
-    include(FetchContent)
-    FetchContent_Declare(
-            mimalloc
-            GIT_REPOSITORY https://github.com/microsoft/mimalloc.git
-            GIT_TAG        v3.0.1
-    )
-    set(MI_BUILD_STATIC ON CACHE BOOL "Build static library")
-    set(MI_OVERRIDE ON CACHE BOOL "Override system malloc")
-    set(MI_INSTALL_OFF ON CACHE BOOL "Skip installation")  # 可选，避免安装
-    FetchContent_MakeAvailable(mimalloc)
-    target_link_libraries(minimidi INTERFACE mimalloc-static)
-endif()
 
 if(BUILD_EXAMPLES)
     add_executable(dumpmidi example/dumpmidi.cpp)
