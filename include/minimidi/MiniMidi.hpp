@@ -1022,15 +1022,30 @@ namespace utils {
 template<concepts::ByteIterator Iter>
 uint32_t read_variable_length(Iter& buffer) {
     uint32_t value = 0;
+    uint8_t byte;
+    
+    // Use constant masks for better readability and potential compiler optimization
+    constexpr uint8_t CONT_BIT = 0x80;  // Continuation bit mask
+    constexpr uint8_t DATA_BITS = 0x7F; // Data bits mask
 
-    for (auto i = 0; i < 4; ++i) {
-        value = (value << 7) + (*buffer & 0x7f);
-        if (!(*buffer & 0x80)) break;
-        ++buffer;
-    }
+    // Unroll loop into four independent steps for better performance
+    // GCC won't unroll the loop, so we do it manually
+    byte = *buffer++;
+    value = byte & DATA_BITS;
+    if (!(byte & CONT_BIT)) [[likely]] return value;
 
-    ++buffer;
-    return value;
+    byte = *buffer++;
+    value = (value << 7) | (byte & DATA_BITS);
+    if (!(byte & CONT_BIT)) return value;
+
+    byte = *buffer++;
+    value = (value << 7) | (byte & DATA_BITS);
+    if (!(byte & CONT_BIT)) return value;
+
+    byte = *buffer++;
+    value = (value << 7) | (byte & DATA_BITS);
+    
+    return value; // Return directly even if MSB is 1, as MIDI spec limits to 4 bytes
 };
 
 /**
@@ -1121,7 +1136,7 @@ inline void write_variable_length(container::Bytes& bytes, const uint32_t num) {
  */
 template<typename Iter>
 void write_iter(container::Bytes& bytes, Iter begin, Iter end) {
-    for (; begin < end; ++begin) { bytes.emplace_back(*begin); }
+    bytes.insert(bytes.end(), begin, end);
 }
 
 /**
@@ -2027,12 +2042,21 @@ Track<T> Track<T>::sort() const {
                    || msg.template cast<Meta>().meta_type() != MetaType::EndOfTrack;
         }
     );
-    // stable sort the messages
-    std::stable_sort(
-        sortedTrack.messages.begin(),
-        sortedTrack.messages.end(),
-        [](const auto& lhs, const auto& rhs) { return lhs.time() < rhs.time(); }
-    );
+
+    // Optimization: Check if messages are already sorted before performing sort
+    // This avoids unnecessary sorting overhead when messages are already in order
+    if (!std::is_sorted(
+            sortedTrack.messages.begin(),
+            sortedTrack.messages.end(),
+            [](const auto& lhs, const auto& rhs) { return (lhs.time) < (rhs.time); }
+        )) {
+        // Only sort if not already sorted
+        std::stable_sort(
+            sortedTrack.messages.begin(),
+            sortedTrack.messages.end(),
+            [](const auto& lhs, const auto& rhs) { return (lhs.time) < (rhs.time); }
+        );
+    }
     return sortedTrack;
 }
 
