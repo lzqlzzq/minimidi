@@ -787,6 +787,27 @@ struct MidiFile : public MidiHeader {
         }
         return *this;
     }
+
+    /**
+     * @brief Copy constructor
+     * @param other The MidiFile object to copy from
+     * 
+     * Performs a deep copy of the MidiHeader base class and tracks member.
+     */
+    MidiFile(const MidiFile& other) : 
+        MidiHeader(other),
+        tracks(other.tracks) {}
+
+    /**
+     * @brief Move constructor
+     * @param other The MidiFile object to move from
+     * 
+     * Efficiently transfers ownership of resources from other to this object.
+     * The moved-from object is left in a valid but unspecified state.
+     */
+    MidiFile(MidiFile&& other) noexcept :
+        MidiHeader(std::move(other)),
+        tracks(std::move(other.tracks)) {}
 };
 
 /**
