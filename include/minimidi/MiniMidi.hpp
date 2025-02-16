@@ -1330,6 +1330,7 @@ public:
 
 template<typename T = container::SmallBytes>
 class PitchBend : public Message<T> {
+public:
     static constexpr auto type   = MessageType::PitchBend;
     static constexpr auto status = lut::to_msg_status(type);
 
@@ -1494,7 +1495,7 @@ public:
 };
 
 template<typename T = container::SmallBytes>
-struct Text : Meta<T> {
+struct Text : public Meta<T> {
 public:
     static constexpr auto meta_type = MetaType::Text;
 
@@ -1504,7 +1505,7 @@ public:
 };
 
 template<typename T = container::SmallBytes>
-struct TrackName : Meta<T> {
+struct TrackName : public Meta<T> {
 public:
     static constexpr auto meta_type = MetaType::TrackName;
 
@@ -1514,7 +1515,7 @@ public:
 };
 
 template<typename T = container::SmallBytes>
-struct InstrumentName : Meta<T> {
+struct InstrumentName : public Meta<T> {
 public:
     static constexpr auto meta_type = MetaType::InstrumentName;
 
@@ -1525,7 +1526,7 @@ public:
 };
 
 template<typename T = container::SmallBytes>
-struct Lyric : Meta<T> {
+struct Lyric : public Meta<T> {
 public:
     static constexpr auto meta_type = MetaType::Lyric;
 
@@ -1535,7 +1536,7 @@ public:
 };
 
 template<typename T = container::SmallBytes>
-struct Marker : Meta<T> {
+struct Marker : public Meta<T> {
 public:
     static constexpr auto meta_type = MetaType::Marker;
 
@@ -1545,7 +1546,7 @@ public:
 };
 
 template<typename T = container::SmallBytes>
-struct CuePoint : Meta<T> {
+struct CuePoint : public Meta<T> {
 public:
     static constexpr auto meta_type = MetaType::CuePoint;
 
@@ -1556,7 +1557,7 @@ public:
 };
 
 template<typename T = container::SmallBytes>
-struct MIDIChannelPrefix : Meta<T> {
+struct MIDIChannelPrefix : public Meta<T> {
 public:
     static constexpr auto meta_type = MetaType::MIDIChannelPrefix;
 
@@ -1568,7 +1569,8 @@ public:
 };
 
 template<typename T = container::SmallBytes>
-struct EndOfTrack : Meta<T> {
+struct EndOfTrack : public Meta<T> {
+public:
     static constexpr auto meta_type = MetaType::EndOfTrack;
 
     EndOfTrack() = default;
