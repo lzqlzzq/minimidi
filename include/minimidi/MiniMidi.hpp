@@ -1,3 +1,61 @@
+/**
+ * @file MiniMidi.hpp
+ * @brief A lightweight, header-only MIDI file parser and writer
+ * 
+ * MiniMidi is a modern C++ library for parsing and writing MIDI files.
+ * Features:
+ * - Header-only implementation
+ * - Zero-cost abstractions
+ * - Modern C++ design (C++20)
+ * - Small memory footprint with stack-allocated optimization
+ * 
+ * Core Classes Design:
+ * The library provides two approaches for handling MIDI data:
+ * 
+ * 1. Eager Loading (MidiFile & Track)
+ *    - MidiFile: Stores complete MIDI data in memory
+ *    - Track: Contains vector of parsed MIDI messages
+ *    - Suitable for editing and writing MIDI files
+ *    - Higher memory usage but faster repeated access
+ * 
+ * 2. Lazy Parsing (MidiFileView & TrackView)
+ *    - MidiFileView: Provides iterator-based access to MIDI data
+ *    - TrackView: Parses MIDI messages on-the-fly
+ *    - Ideal for fast one-time reading or memory-constrained scenarios
+ *    - Lower memory footprint but requires parsing on each access
+ * 
+ * The View classes serve as efficient parsers that can be converted
+ * to their storage counterparts when needed.
+ * 
+ * Code Structure:
+ * 1. Core Classes
+ *    - Message: Base class for all MIDI messages
+ *    - Track/TrackView: Container and view for MIDI track data
+ *    - MidiHeader: MIDI file header information  
+ *    - MidiFile/MidiFileView: Main classes for MIDI file handling
+ * 
+ * The library provides two complementary approaches for handling MIDI data:
+ * - Storage Classes (MidiFile, Track): For editing and manipulation
+ * - View Classes (MidiFileView, TrackView): For efficient parsing
+ * 
+ * 2. Message Types (X-Macro based enums)
+ *    - MessageType: MIDI message types (note on/off, etc.)
+ *    - MetaType: Meta event types (tempo, time signature, etc.)
+ * 
+ * 3. Utility Namespaces
+ *    - container: Container types and concepts
+ *    - utils: Helper functions for MIDI parsing/writing
+ *    - lut: Lookup tables for MIDI message types
+ * 
+ * 4. Implementation Sections
+ *    - MIDI Parsing: TrackView and MidiFileView for efficient parsing
+ *    - MIDI Writing: Serialization of MIDI data to bytes
+ *    - String Formatting: to_string implementations for debugging
+ * 
+ * The library uses modern C++ features like concepts and templates
+ * to provide type-safe and efficient MIDI file handling.
+ */
+
 #ifndef MINIMIDI_HPP
 #define MINIMIDI_HPP
 
@@ -21,18 +79,51 @@
 #include "svector.h"
 
 namespace minimidi {
-// Concepts (for container) Definitions and Container Aliases
+
+/**
+ * @brief Main namespace for the MiniMidi library
+ * 
+ * Contains all core functionality for parsing, manipulating and writing MIDI files.
+ * The library is designed with modern C++ features and emphasizes efficiency through
+ * template metaprogramming and zero-cost abstractions.
+ */
+
+/**
+ * @brief Container types used throughout the library
+ * 
+ * Defines the basic container types for storing MIDI data:
+ * - Bytes: Dynamic array for large MIDI data
+ * - SmallBytes: Small size optimized vector of uint8_t
+ */
 namespace container {
 typedef std::vector<uint8_t> Bytes;
 
 // size of SmallBytes is totally 8 bytes on the stack (7 bytes + 1 byte for size)
 typedef ankerl::svector<uint8_t, 7> SmallBytes;
+}   // namespace container
 
-// Concepts
-
-// concept for begin end constructor
+/**
+ * @brief Compile-time type constraints for MIDI data handling
+ * 
+ * Defines concepts that ensure type safety and proper behavior:
+ * - ByteContainer: For storing MIDI data
+ * - ByteIterator: For iterating over MIDI bytes
+ * - MovableContainer: For efficient container movement
+ * - InitializerListConstructible: For convenient message construction
+ * - SizeConstructible: For optimized container initialization
+ */
+namespace concepts {
+/**
+ * @brief Concept for containers that can store MIDI data
+ * 
+ * Requirements:
+ * - Has begin() and end() iterators
+ * - Has size() returning integral type
+ * - Elements convertible to uint8_t
+ * - Constructible from iterator range
+ */
 template<typename T>
-concept BasicArr = requires(T a) {
+concept ByteContainer = requires(T a) {
     { a.begin() };
     { a.end() };
     { T(a.begin(), a.end()) };
@@ -40,38 +131,56 @@ concept BasicArr = requires(T a) {
     { a[0] } -> std::convertible_to<uint8_t>;
 };
 
-// concept for move constructor
+/**
+ * @brief Concept for move-constructible containers
+ * 
+ * Combines standard move constructibility with movable requirement
+ */
 template<typename T>
-concept MoveConstructible = std::is_move_constructible_v<T> && std::movable<T>;
+concept MovableContainer = std::is_move_constructible_v<T> && std::movable<T>;
 
-// concept for a random iterator which can dereference into a uint8_t
+/**
+ * @brief Concept for iterators over byte data
+ * 
+ * Requirements:
+ * - Can be dereferenced to uint8_t
+ * - Supports increment and addition
+ */
 template<typename T>
-concept RandomIterator = requires(T a) {
+concept ByteIterator = requires(T a) {
     { *a } -> std::convertible_to<uint8_t>;
     { a++ };
     { a + 10 };
 };
 
-// concept for construct from initializer list
+/**
+ * @brief Concept for containers supporting initializer list construction
+ */
 template<typename T>
-concept InitializerList = requires(T a) {
+concept InitializerListConstructible = requires(T a) {
     { T{0x00, 0x01, 0x02} };
 };
 
+/**
+ * @brief Concept for containers supporting construction from begin and size
+ */
 template<typename T>
-concept BeginSizeConstructor = requires(T a) {
+concept SizeConstructible = requires(T a) {
     { a.begin() };
     { a.size() };
     { T(a.begin(), a.size()) };
 };
-
-}   // namespace container
+}   // namespace concepts
 
 // Declarations for Message, Track, TrackView, MidiFileView and MidiFile
 enum class MessageType : uint8_t;
 enum class MetaType : uint8_t;
 
-template<container::BasicArr T = container::SmallBytes>
+/**
+ * @brief Base message class for all MIDI messages
+ * @tparam T Container type for message data, defaults to SmallBytes
+ */
+template<concepts::ByteContainer T = container::SmallBytes>
 class Message {
 protected:
     T m_data;
@@ -80,33 +189,58 @@ public:
     uint32_t time{};
     uint8_t  statusByte{};
 
+    /**
+     * @brief Default constructor
+     */
     Message() = default;
 
-    // copy constructor
+    /**
+     * @brief Construct a message from data container
+     * @param time Delta time in ticks
+     * @param statusByte Status byte including channel
+     * @param data Message data bytes
+     */
     Message(const uint32_t time, const uint8_t statusByte, const T& data) :
         m_data(data.begin(), data.end()), time(time), statusByte(statusByte) {};
 
-    // move constructor
+    /**
+     * @brief Move construct a message from data container
+     * @param time Delta time in ticks
+     * @param statusByte Status byte including channel
+     * @param data Message data bytes (moved from)
+     */
     Message(const uint32_t time, const uint8_t statusByte, T&& data)
-        requires container::MoveConstructible<T>
+        requires concepts::MovableContainer<T>
         : m_data(std::move(data)), time(time), statusByte(statusByte) {};
 
-    // constructor from begin and end
-    template<container::RandomIterator Iter>
+    /**
+     * @brief Construct from iterator range
+     * @param time Delta time in ticks
+     * @param statusByte Status byte including channel
+     * @param begin Start of data range
+     * @param end End of data range
+     */
+    template<concepts::ByteIterator Iter>
     Message(const uint32_t time, const uint8_t statusByte, Iter begin, Iter end) :
         m_data(begin, end), time(time), statusByte(statusByte){};
 
-    // constructor from begin and size
-    template<container::RandomIterator Iter>
+    /**
+     * @brief Construct from iterator and size
+     * @param time Delta time in ticks
+     * @param statusByte Status byte including channel
+     * @param begin Start of data
+     * @param size Number of bytes
+     */
+    template<concepts::ByteIterator Iter>
     Message(const uint32_t time, const uint8_t statusByte, Iter begin, size_t size)
-        requires container::BeginSizeConstructor<T>
+        requires concepts::SizeConstructible<T>
         : m_data(begin, size), time(time), statusByte(statusByte){};
 
     // constructor from begin and size for container that does not support BeginSizeConstructor
     // like std::vector
-    template<container::RandomIterator Iter>
+    template<concepts::ByteIterator Iter>
     Message(const uint32_t time, const uint8_t statusByte, Iter begin, size_t size)
-        requires(!container::BeginSizeConstructor<T>)
+        requires(!concepts::SizeConstructible<T>)
         : m_data(begin, begin + size), time(time), statusByte(statusByte){};
 
     // constructor from initializer list
@@ -125,7 +259,7 @@ public:
 
     // move constructor from another message with same data type
     Message(Message&& other) noexcept
-        requires container::MoveConstructible<T>
+        requires concepts::MovableContainer<T>
         : m_data(std::move(other.m_data)), time(other.time), statusByte(other.statusByte) {};
 
     // Zero Cost Down casting to derived class
@@ -146,16 +280,82 @@ public:
     [[nodiscard]] uint8_t channel() const { return statusByte & 0x0F; };
 
     [[nodiscard]] MessageType type() const;
+
+    /**
+     * @brief Copy assignment operator
+     * @param other Message to copy from
+     * @return Reference to this message
+     * 
+     * Performs self-assignment check before copying
+     */
+    Message& operator=(const Message& other) {
+        if (this != &other) {
+            m_data = T(other.m_data.begin(), other.m_data.end());
+            time = other.time;
+            statusByte = other.statusByte;
+        }
+        return *this;
+    }
+
+    /**
+     * @brief Move assignment operator
+     * @param other Message to move from
+     * @return Reference to this message
+     * 
+     * Performs self-assignment check before moving
+     */
+    Message& operator=(Message&& other) noexcept
+        requires concepts::MovableContainer<T>
+    {
+        if (this != &other) {
+            m_data = std::move(other.m_data);
+            time = other.time;
+            statusByte = other.statusByte;
+        }
+        return *this;
+    }
 };
 
 template<typename T = container::SmallBytes>
 using Messages = std::vector<Message<T>>;
 
+/**
+ * @brief View class for parsing a single MIDI track
+ * @tparam T Container type for messages, defaults to SmallBytes
+ * 
+ * TrackView provides an iterator interface for parsing MIDI messages
+ * from a track's raw data. Messages are parsed on-demand during iteration.
+ * 
+ * Example usage:
+ * @code
+ * // Create view from raw track data
+ * const uint8_t* track_data = ...;  // Pointer to track chunk data
+ * size_t track_size = ...;          // Size of track chunk in bytes
+ * TrackView<> view(track_data, track_size);
+ * 
+ * // Iterate through messages
+ * for(const auto& msg : view) {
+ *     // Process each message
+ *     if(msg.type() == MessageType::NoteOn) {
+ *         auto& note = msg.cast<NoteOn>();
+ *         // Access note parameters: note.pitch(), note.velocity(), note.channel()
+ *     }
+ * }
+ * 
+ * // Convert to Track for storage/manipulation
+ * Track<> track(view); // Parses all messages at once
+ * @endcode
+ */
 template<typename T = container::SmallBytes>
 struct TrackView {
     const uint8_t* cursor = nullptr;
     size_t         size   = 0;
 
+    /**
+     * @brief Construct a view over track data
+     * @param cursor Pointer to start of track chunk data
+     * @param size Size of track chunk in bytes
+     */
     TrackView(const uint8_t* cursor, const size_t size) :
         cursor(cursor), size(static_cast<size_t>(size)) {};
 
@@ -166,24 +366,86 @@ struct TrackView {
 
     iterator begin() const;
     iterator end() const;
+
+    /**
+     * @brief Copy assignment operator
+     * @param other TrackView to copy from
+     * @return Reference to this view
+     * 
+     * Performs self-assignment check before copying
+     */
+    TrackView& operator=(const TrackView& other) {
+        if (this != &other) {
+            cursor = other.cursor;
+            size = other.size;
+        }
+        return *this;
+    }
+
+    /**
+     * @brief Move assignment operator
+     * @param other TrackView to move from
+     * @return Reference to this view
+     * 
+     * Performs self-assignment check before moving
+     */
+    TrackView& operator=(TrackView&& other) noexcept {
+        if (this != &other) {
+            cursor = other.cursor;
+            size = other.size;
+            other.cursor = nullptr;
+            other.size = 0;
+        }
+        return *this;
+    }
 };
 
+/**
+ * @brief Container class for storing MIDI track data
+ * @tparam T Container type for messages, defaults to SmallBytes
+ * 
+ * Track stores a complete vector of parsed MIDI messages.
+ * It can be constructed from a TrackView when persistent
+ * storage or message manipulation is needed.
+ */
 template<typename T = container::SmallBytes>
 class Track {
 public:
     Messages<T> messages;
 
+    /**
+     * @brief Default constructor
+     */
     Track() = default;
 
+    /**
+     * @brief Move constructor
+     */
     Track(Track<T>&& other) noexcept : messages(std::move(other.messages)) {};
 
+    /**
+     * @brief Copy constructor
+     */
     Track(const Track<T>& other) : messages(other.messages.begin(), other.messages.end()) {};
 
+    /**
+     * @brief Construct from raw track data
+     * @param cursor Pointer to track chunk data
+     * @param size Size of track chunk in bytes
+     */
     Track(const uint8_t* cursor, size_t size);
 
+    /**
+     * @brief Construct from track view
+     * @param view TrackView to parse
+     */
     explicit Track(const TrackView<T>& view) : Track(view.cursor, view.size) {};
 
-    explicit Track(Messages<T>&& message) { this->messages = std::vector(std::move(message)); };
+    /**
+     * @brief Construct from message vector
+     * @param messages Vector of MIDI messages (moved from)
+     */
+    explicit Track(Messages<T>&& messages) { this->messages = std::vector(std::move(messages)); };
 
     auto begin() const { return this->messages.begin(); };
     auto begin() { return this->messages.begin(); };
@@ -192,8 +454,37 @@ public:
     auto end() { return this->messages.end(); };
 
     [[nodiscard]] size_t size() const { return this->messages.size(); };
+    [[nodiscard]] size_t message_num() const { return this->messages.size(); };
 
     Track<T> sort() const;
+
+    /**
+     * @brief Copy assignment operator
+     * @param other Track to copy from
+     * @return Reference to this track
+     * 
+     * Performs self-assignment check before copying
+     */
+    Track& operator=(const Track& other) {
+        if (this != &other) {
+            messages = Messages<T>(other.messages.begin(), other.messages.end());
+        }
+        return *this;
+    }
+
+    /**
+     * @brief Move assignment operator
+     * @param other Track to move from
+     * @return Reference to this track
+     * 
+     * Performs self-assignment check before moving
+     */
+    Track& operator=(Track&& other) noexcept {
+        if (this != &other) {
+            messages = std::move(other.messages);
+        }
+        return *this;
+    }
 };
 
 template<typename T = container::SmallBytes>
@@ -201,6 +492,9 @@ using Tracks = std::vector<Track<T>>;
 
 enum class MidiFormat : uint8_t;
 
+/**
+ * @brief MIDI file header information
+ */
 class MidiHeader {
 protected:
     MidiFormat m_format{};
@@ -244,14 +538,67 @@ public:
     [[nodiscard]] uint16_t   ticks_per_second() const;
 };
 
+/**
+ * @brief View class for parsing MIDI files with minimal memory usage
+ * @tparam T Container type for messages, defaults to SmallBytes
+ * 
+ * MidiFileView provides an iterator-based interface for parsing MIDI files.
+ * It reads track data on-demand without loading the entire file into memory.
+ * 
+ * Example usage:
+ * @code
+ * // Read MIDI file data
+ * const uint8_t* file_data = ...;  // Pointer to MIDI file data
+ * size_t file_size = ...;          // Size of file in bytes
+ * 
+ * // Create view from raw file data
+ * MidiFileView<> view(file_data, file_size);
+ * 
+ * // Access file properties
+ * auto format = view.format();              // MIDI format (0, 1, or 2)
+ * auto division = view.division_type();     // Timing division type
+ * auto ticks = view.ticks_per_quarter();    // Ticks per quarter note
+ * 
+ * // Iterate through tracks
+ * for(const auto& track_view : view) {
+ *     // Each track_view is a TrackView object
+ *     for(const auto& msg : track_view) {
+ *         // Process each message
+ *     }
+ * }
+ * 
+ * // Convert to MidiFile for full access/editing
+ * MidiFile<> midi(view); // Parses entire file
+ * @endcode
+ * 
+ * The view classes provide efficient parsing for scenarios where:
+ * - Only a subset of messages needs to be processed
+ * - Memory usage needs to be minimized
+ * - One-time sequential access is sufficient
+ */
 template<typename T = container::SmallBytes>
 struct MidiFileView : public MidiHeader {
     const uint8_t* cursor    = nullptr;
     const uint8_t* bufferEnd = nullptr;
     size_t         trackNum  = 0;
 
+    /**
+     * @brief Default constructor
+     */
     MidiFileView() = default;
+
+    /**
+     * @brief Construct a view over MIDI file data
+     * @param data Pointer to MIDI file data
+     * @param size Size of file in bytes
+     * @throws std::ios_base::failure if header is invalid
+     */
     MidiFileView(const uint8_t* data, size_t size);
+
+    /**
+     * @brief Construct from byte vector
+     * @param data Vector containing MIDI file data
+     */
     explicit MidiFileView(const container::Bytes& data) : MidiFileView(data.data(), data.size()) {};
 
     class iterator;
@@ -259,23 +606,100 @@ struct MidiFileView : public MidiHeader {
     iterator end() const { return iterator(); };
 
     size_t track_num() const { return trackNum; };
+
+    /**
+     * @brief Copy assignment operator
+     * @param other MidiFileView to copy from
+     * @return Reference to this view
+     * 
+     * Performs self-assignment check before copying
+     */
+    MidiFileView& operator=(const MidiFileView& other) {
+        if (this != &other) {
+            MidiHeader::operator=(other);
+            cursor = other.cursor;
+            bufferEnd = other.bufferEnd;
+            trackNum = other.trackNum;
+        }
+        return *this;
+    }
+
+    /**
+     * @brief Move assignment operator
+     * @param other MidiFileView to move from
+     * @return Reference to this view
+     * 
+     * Performs self-assignment check before moving
+     */
+    MidiFileView& operator=(MidiFileView&& other) noexcept {
+        if (this != &other) {
+            MidiHeader::operator=(std::move(other));
+            cursor = other.cursor;
+            bufferEnd = other.bufferEnd;
+            trackNum = other.trackNum;
+            other.cursor = nullptr;
+            other.bufferEnd = nullptr;
+            other.trackNum = 0;
+        }
+        return *this;
+    }
 };
 
+/**
+ * @brief Main class for storing and manipulating MIDI files
+ * @tparam T Container type for messages, defaults to SmallBytes
+ * 
+ * MidiFile stores the complete MIDI data in memory, allowing for
+ * editing, sorting, and writing operations. It can be constructed
+ * from a MidiFileView when full data access is needed.
+ */
 template<typename T = container::SmallBytes>
 struct MidiFile : public MidiHeader {
     Tracks<T> tracks;
 
+    /**
+     * @brief Default constructor
+     */
     MidiFile() = default;
 
+    /**
+     * @brief Construct from file view
+     * @param view MidiFileView to parse
+     */
     explicit MidiFile(const MidiFileView<T>& view);
 
+    /**
+     * @brief Construct from raw file data
+     * @param data Pointer to MIDI file data
+     * @param size Size of file in bytes
+     */
     MidiFile(const uint8_t* const data, const size_t size);
 
+    /**
+     * @brief Construct from byte vector
+     * @param data Vector containing MIDI file data
+     */
     explicit MidiFile(const container::Bytes& data) : MidiFile(data.data(), data.size()) {};
 
-    explicit MidiFile(MidiFormat format, uint8_t divisionType = 0, uint16_t ticksPerQuarter = 960) :
-        MidiHeader(format, divisionType, ticksPerQuarter) {};
+    /**
+     * @brief Construct empty MIDI file
+     * @param format MIDI format (0, 1, or 2)
+     * @param divisionType Timing division type (0 for ticks per quarter)
+     * @param ticksPerQuarter Number of ticks per quarter note
+     */
+    explicit MidiFile(
+        MidiFormat format, 
+        uint8_t divisionType = 0, 
+        uint16_t ticksPerQuarter = 960
+    ) : MidiHeader(format, divisionType, ticksPerQuarter) {};
 
+    /**
+     * @brief Construct from tracks (move)
+     * @param tracks Vector of tracks to move from
+     * @param format MIDI format
+     * @param divisionType Timing division type
+     * @param ticksPerQuarter Ticks per quarter note
+     */
     explicit MidiFile(
         Tracks<T>&& tracks,
         MidiFormat  format,
@@ -283,6 +707,13 @@ struct MidiFile : public MidiHeader {
         uint16_t    ticksPerQuarter = 960
     ) : MidiHeader(format, divisionType, ticksPerQuarter), tracks(std::move(tracks)) {};
 
+    /**
+     * @brief Construct from tracks (copy)
+     * @param tracks Vector of tracks to copy from
+     * @param format MIDI format
+     * @param divisionType Timing division type
+     * @param ticksPerQuarter Ticks per quarter note
+     */
     explicit MidiFile(
         const Tracks<T>& tracks,
         MidiFormat       format,
@@ -290,8 +721,20 @@ struct MidiFile : public MidiHeader {
         uint16_t         ticksPerQuarter = 960
     ) : MidiHeader(format, divisionType, ticksPerQuarter), tracks(tracks) {};
 
+    /**
+     * @brief Load a MIDI file from disk
+     * @param filepath Path to the MIDI file
+     * @return MidiFile object containing the parsed file
+     * @throws std::ios_base::failure if file cannot be opened or parsed
+     */
     static MidiFile from_file(const std::string& filepath);
-    void            write_file(const std::string& filepath) const;
+
+    /**
+     * @brief Write MIDI data to a file
+     * @param filepath Path where the MIDI file will be written
+     * @throws std::ios_base::failure if file cannot be written
+     */
+    void write_file(const std::string& filepath) const;
 
     [[nodiscard]] size_t track_num() const { return this->tracks.size(); };
     [[nodiscard]] size_t size() const { return this->tracks.size(); };
@@ -302,13 +745,63 @@ struct MidiFile : public MidiHeader {
     auto end() const { return this->tracks.end(); };
     auto end() { return this->tracks.end(); };
 
+    /**
+     * @brief Sort (stable) all messages in all tracks by time
+     * @return New MidiFile with sorted messages
+     */
     MidiFile<T> sort() const;
 
+    /**
+     * @brief Convert MIDI data to raw bytes
+     * @return Vector of bytes representing the MIDI file
+     */
     container::Bytes to_bytes() const;
     container::Bytes to_bytes_sorted() const;
+
+    /**
+     * @brief Copy assignment operator
+     * @param other MidiFile to copy from
+     * @return Reference to this file
+     * 
+     * Performs self-assignment check before copying
+     */
+    MidiFile& operator=(const MidiFile& other) {
+        if (this != &other) {
+            MidiHeader::operator=(other);
+            tracks = Tracks<T>(other.tracks.begin(), other.tracks.end());
+        }
+        return *this;
+    }
+
+    /**
+     * @brief Move assignment operator
+     * @param other MidiFile to move from
+     * @return Reference to this file
+     * 
+     * Performs self-assignment check before moving
+     */
+    MidiFile& operator=(MidiFile&& other) noexcept {
+        if (this != &other) {
+            MidiHeader::operator=(std::move(other));
+            tracks = std::move(other.tracks);
+        }
+        return *this;
+    }
 };
 
-// (name, status, length)
+/**
+ * @brief X-Macro definitions for MIDI message types
+ * 
+ * Format: MIDI_MESSAGE_TYPE_MEMBER(type, status, length)
+ * - type: Enum name for the message type
+ * - status: Status byte value (0x80-0xFF)
+ * - length: Fixed message length in bytes (1-3, or 65535 for variable length)
+ * 
+ * Used to generate:
+ * - MessageType enum
+ * - Status byte lookup table
+ * - Message length lookup table
+ */
 #define MIDI_MESSAGE_TYPE                                   \
     MIDI_MESSAGE_TYPE_MEMBER(Unknown, 0x00, 65535)          \
     MIDI_MESSAGE_TYPE_MEMBER(NoteOff, 0x80, 3)              \
@@ -331,7 +824,18 @@ struct MidiFile : public MidiHeader {
     MIDI_MESSAGE_TYPE_MEMBER(ActiveSensing, 0xFE, 1)        \
     MIDI_MESSAGE_TYPE_MEMBER(Meta, 0xFF, 65535)
 
-// (name, status)
+/**
+ * @brief X-Macro definitions for MIDI meta event types
+ * 
+ * Format: MIDI_META_TYPE_MEMBER(type, status)
+ * - type: Enum name for the meta event type
+ * - status: Meta type byte value (0x00-0xFF)
+ * 
+ * Used to generate:
+ * - MetaType enum
+ * - Meta type lookup table
+ * - String conversion functions
+ */
 #define MIDI_META_TYPE                                 \
     MIDI_META_TYPE_MEMBER(SequenceNumber, 0x00)        \
     MIDI_META_TYPE_MEMBER(Text, 0x01)                  \
@@ -387,7 +891,19 @@ inline std::string to_string(const MetaType& metaType) {
 };
 }   // namespace format
 
-// Compile-time built lookup tables for message type and meta type
+/**
+ * @brief Lookup tables and conversion utilities for MIDI messages
+ * 
+ * Provides compile-time lookup tables and conversion functions for MIDI message handling:
+ * - Message type/status byte conversion
+ * - Message length determination
+ * - Meta event type conversion
+ * - Channel and status byte manipulation
+ * 
+ * All tables are generated at compile-time using constexpr functions
+ * to ensure zero runtime overhead. The namespace uses X-Macro based
+ * enum definitions to maintain consistency between different lookup tables.
+ */
 namespace lut {
 // Define 4 lut arrays for message type, status, length and meta status
 static constexpr std::array<uint8_t, 20> MESSAGE_STATUS = {
@@ -480,9 +996,30 @@ constexpr static uint8_t to_status_byte(const MessageType type, const uint8_t ch
 }   // namespace lut
 
 
-// Define some utils for reading and writing MIDI data
+/**
+ * @brief Utility functions for MIDI data manipulation
+ * 
+ * Core utilities for MIDI file parsing and writing:
+ * - Variable Length Quantity (VLQ) encoding/decoding
+ * - Most Significant Byte (MSB) operations
+ * - End of Track message handling
+ * - Iterator-based data writing
+ * 
+ * These utilities handle the low-level details of the MIDI file format,
+ * ensuring correct byte ordering and data representation.
+ */
 namespace utils {
-template<container::RandomIterator Iter>
+
+/**
+ * @brief Read a variable-length quantity from a byte stream
+ * @tparam Iter Iterator type for byte stream
+ * @param buffer Reference to iterator, will be advanced past the read bytes
+ * @return Decoded 32-bit value
+ * 
+ * Reads a MIDI variable-length quantity, which can be 1-4 bytes long.
+ * Each byte uses 7 bits for the value and 1 bit to indicate continuation.
+ */
+template<concepts::ByteIterator Iter>
 uint32_t read_variable_length(Iter& buffer) {
     uint32_t value = 0;
 
@@ -496,6 +1033,12 @@ uint32_t read_variable_length(Iter& buffer) {
     return value;
 };
 
+/**
+ * @brief Read a multi-byte value in MSB (Most Significant Byte) order
+ * @param buffer Pointer to start of bytes
+ * @param length Number of bytes to read
+ * @return Combined value as uint64_t
+ */
 inline uint64_t read_msb_bytes(const uint8_t* buffer, const size_t length) {
     uint64_t res = 0;
 
@@ -507,6 +1050,12 @@ inline uint64_t read_msb_bytes(const uint8_t* buffer, const size_t length) {
     return res;
 };
 
+/**
+ * @brief Write a value in MSB order to a byte buffer
+ * @param buffer Pointer to destination buffer
+ * @param value Value to write
+ * @param length Number of bytes to write
+ */
 inline void write_msb_bytes(uint8_t* buffer, const size_t value, const size_t length) {
     for (auto i = 1; i <= length; ++i) {
         *buffer = static_cast<uint8_t>((value >> ((length - i) * 8)) & 0xFF);
@@ -514,6 +1063,11 @@ inline void write_msb_bytes(uint8_t* buffer, const size_t value, const size_t le
     }
 };
 
+/**
+ * @brief Calculate number of bytes needed for a variable-length quantity
+ * @param num Value to encode
+ * @return Number of bytes needed (1-4)
+ */
 inline uint8_t calc_variable_length(uint32_t num) {
     if (num < 0x80)
         return 1;
@@ -525,6 +1079,14 @@ inline uint8_t calc_variable_length(uint32_t num) {
         return 4;
 };
 
+/**
+ * @brief Write a variable-length quantity to a byte buffer
+ * @param buffer Reference to buffer pointer, will be advanced
+ * @param num Value to encode
+ * 
+ * Encodes a number using MIDI's variable-length quantity format
+ * and writes it to the buffer.
+ */
 inline void write_variable_length(uint8_t*& buffer, const uint32_t num) {
     const uint8_t byteNum = calc_variable_length(num);
 
@@ -536,6 +1098,11 @@ inline void write_variable_length(uint8_t*& buffer, const uint32_t num) {
     ++buffer;
 };
 
+/**
+ * @brief Write a variable-length quantity to a byte vector
+ * @param bytes Vector to append bytes to
+ * @param num Value to encode
+ */
 inline void write_variable_length(container::Bytes& bytes, const uint32_t num) {
     const uint8_t byteNum = calc_variable_length(num);
 
@@ -545,11 +1112,23 @@ inline void write_variable_length(container::Bytes& bytes, const uint32_t num) {
     bytes.emplace_back(num & 0x7F);
 };
 
+/**
+ * @brief Copy a range of bytes to a byte vector
+ * @tparam Iter Iterator type for source range
+ * @param bytes Destination vector
+ * @param begin Start of source range
+ * @param end End of source range
+ */
 template<typename Iter>
 void write_iter(container::Bytes& bytes, Iter begin, Iter end) {
     for (; begin < end; ++begin) { bytes.emplace_back(*begin); }
 }
 
+/**
+ * @brief Create a SmallBytes container with a variable-length quantity
+ * @param num Value to encode
+ * @return SmallBytes containing the encoded value
+ */
 inline container::SmallBytes make_variable_length(uint32_t num) {
     const uint8_t byteNum = calc_variable_length(num);
 
@@ -560,6 +1139,16 @@ inline container::SmallBytes make_variable_length(uint32_t num) {
     return result;
 };
 
+/**
+ * @brief Write End of Track message to a byte buffer
+ * @param cursor Reference to buffer pointer, will be advanced
+ * 
+ * Writes a complete End of Track meta message, including:
+ * - Delta time (1)
+ * - Meta event status (0xFF)
+ * - End of Track type (0x2F)
+ * - Length byte (0x00)
+ */
 inline void write_eot(uint8_t*& cursor) {
     write_variable_length(cursor, 1);
     *cursor = lut::to_msg_status(MessageType::Meta);
@@ -570,6 +1159,10 @@ inline void write_eot(uint8_t*& cursor) {
     ++cursor;
 }
 
+/**
+ * @brief Write End of Track message to a byte vector
+ * @param bytes Vector to append the message to
+ */
 inline void write_eot(container::Bytes& bytes) {
     write_variable_length(bytes, 1);
     bytes.emplace_back(lut::to_msg_status(MessageType::Meta));
@@ -578,15 +1171,25 @@ inline void write_eot(container::Bytes& bytes) {
 }
 }   // namespace utils
 
-template<container::BasicArr T>
+template<concepts::ByteContainer T>
 MessageType Message<T>::type() const {
     return lut::to_msg_type(statusByte);
 }
 
 
-// Subclasses of Message
-// Define messages namespace for folding the code
-// using namespace messages is added in the end of the file
+/**
+ * @brief MIDI message type definitions and implementations
+ * 
+ * Contains all MIDI message classes derived from base Message class:
+ * - Common Messages (NoteOn, NoteOff, etc.)
+ * - Meta Messages (Tempo, TimeSignature, etc.)
+ * 
+ * Each message type provides:
+ * - Type-safe construction
+ * - Convenient accessors for message parameters
+ * - Compile-time message type information
+ * - Zero-cost downcasting through template specialization
+ */
 namespace messages {
 template<typename T = container::SmallBytes>
 class NoteOn : public Message<T> {
@@ -596,7 +1199,7 @@ public:
 
     NoteOn() = default;
     NoteOn(const uint32_t time, const uint8_t channel, const uint8_t pitch, const uint8_t velocity)
-        requires container::InitializerList<T>
+        requires concepts::InitializerListConstructible<T>
         : Message<T>(time, lut::to_status_byte(type, channel), {pitch, velocity}) {};
 
     [[nodiscard]] uint8_t pitch() const { return this->m_data[0]; };
@@ -611,7 +1214,7 @@ public:
 
     NoteOff() = default;
     NoteOff(const uint32_t time, const uint8_t channel, const uint8_t pitch, const uint8_t velocity)
-        requires container::InitializerList<T>
+        requires concepts::InitializerListConstructible<T>
         : Message<T>(time, lut::to_status_byte(type, channel), {pitch, velocity}) {};
 
     [[nodiscard]] uint8_t pitch() const { return this->m_data[0]; };
@@ -631,7 +1234,7 @@ public:
         const uint8_t  controlNumber,
         const uint8_t  controlValue
     )
-        requires container::InitializerList<T>
+        requires concepts::InitializerListConstructible<T>
         : Message<T>(time, lut::to_status_byte(type, channel), {controlNumber, controlValue}) {};
 
     [[nodiscard]] uint8_t control_number() const { return this->m_data[0]; };
@@ -683,7 +1286,7 @@ public:
 
     QuarterFrame() = default;
     QuarterFrame(const uint32_t time, const uint8_t type, const uint8_t value)
-        requires container::InitializerList<T>
+        requires concepts::InitializerListConstructible<T>
         : Message<T>(time, status, {static_cast<uint8_t>((type << 4) | value)}) {};
 
     [[nodiscard]] uint8_t frame_type() const { return this->m_data[0] >> 4; };
@@ -699,7 +1302,7 @@ public:
     SongPositionPointer() = default;
     // clang-format off
     SongPositionPointer(const uint32_t time, const uint16_t position)
-        requires container::InitializerList<T>: Message<T>(
+        requires concepts::InitializerListConstructible<T>: Message<T>(
             time, status,
             {static_cast<uint8_t>(position & 0x7F), static_cast<uint8_t>(position >> 7)}
         ) {};
@@ -720,7 +1323,7 @@ class PitchBend : public Message<T> {
     PitchBend() = default;
     // clang-format off
     PitchBend(const uint32_t time, const uint8_t channel, const int16_t value)
-        requires container::InitializerList<T>: Message<T>(
+        requires concepts::InitializerListConstructible<T>: Message<T>(
             time, lut::to_status_byte(status, channel), {
                 static_cast<uint8_t>((value - MIN_PITCH_BEND) & 0x7F),
                 static_cast<uint8_t>((value - MIN_PITCH_BEND) >> 7)
@@ -1458,7 +2061,7 @@ void MidiFile<T>::write_file(const std::string& filepath) const {
 namespace format {
 // --- MIDI message to_string implementations ---
 
-template<container::BasicArr T>
+template<concepts::ByteContainer T>
 std::string to_string(const T& data) {
     // show in hex
     std::stringstream ss;
@@ -1566,8 +2169,8 @@ std::string to_string(const Message<T>& message) {
 template<typename T>
 std::string to_string(const Track<T>& track) {
     std::stringstream out;
-    for (int j = 0; j < track.message_num(); ++j) {
-        out << to_string(track.message(j)) << std::endl;
+    for (int j = 0; j < track.size(); ++j) {
+        out << to_string(track.messages[j]) << std::endl;
     }
     return out.str();
 };
@@ -1587,7 +2190,7 @@ std::string to_string(const MidiFile<T>& file) {
 
     for (int i = 0; i < file.track_num(); ++i) {
         out << "Track " << i << ": " << std::endl;
-        out << to_string(file.track(i)) << std::endl;
+        out << to_string(file.tracks[i]) << std::endl;
     }
     return out.str();
 };
