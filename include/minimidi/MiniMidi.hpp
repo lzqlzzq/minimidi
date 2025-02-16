@@ -1356,6 +1356,7 @@ class PitchBend : public Message<T> {
 
 template<typename T = container::SmallBytes>
 struct Meta : Message<T> {
+public:  // 添加 public 关键字
     static constexpr auto type   = MessageType::Meta;
     static constexpr auto status = lut::to_msg_status(type);
 
@@ -1395,6 +1396,7 @@ struct Meta : Message<T> {
 
 template<typename T = container::SmallBytes>
 struct SetTempo : Meta<T> {
+public:
     static constexpr auto meta_type = MetaType::SetTempo;
 
     SetTempo() = default;
@@ -1413,6 +1415,7 @@ struct SetTempo : Meta<T> {
 
 template<typename T = container::SmallBytes>
 struct TimeSignature : Meta<T> {
+public:
     static constexpr auto meta_type = MetaType::TimeSignature;
 
     TimeSignature() = default;
@@ -1434,6 +1437,7 @@ struct TimeSignature : Meta<T> {
 
 template<typename T = container::SmallBytes>
 struct KeySignature : Meta<T> {
+public:  // 添加 public 关键字
     static constexpr auto meta_type = MetaType::KeySignature;
 
     KeySignature() = default;
@@ -1459,6 +1463,7 @@ struct KeySignature : Meta<T> {
 
 template<typename T = container::SmallBytes>
 struct SMPTEOffset : Meta<T> {
+public:
     static constexpr auto meta_type = MetaType::SMPTEOffset;
 
     SMPTEOffset() = default;
@@ -1490,6 +1495,7 @@ struct SMPTEOffset : Meta<T> {
 
 template<typename T = container::SmallBytes>
 struct Text : Meta<T> {
+public:
     static constexpr auto meta_type = MetaType::Text;
 
     Text() = default;
@@ -1499,6 +1505,7 @@ struct Text : Meta<T> {
 
 template<typename T = container::SmallBytes>
 struct TrackName : Meta<T> {
+public:
     static constexpr auto meta_type = MetaType::TrackName;
 
     TrackName() = default;
@@ -1508,6 +1515,7 @@ struct TrackName : Meta<T> {
 
 template<typename T = container::SmallBytes>
 struct InstrumentName : Meta<T> {
+public:
     static constexpr auto meta_type = MetaType::InstrumentName;
 
     InstrumentName() = default;
@@ -1518,6 +1526,7 @@ struct InstrumentName : Meta<T> {
 
 template<typename T = container::SmallBytes>
 struct Lyric : Meta<T> {
+public:
     static constexpr auto meta_type = MetaType::Lyric;
 
     Lyric() = default;
@@ -1527,6 +1536,7 @@ struct Lyric : Meta<T> {
 
 template<typename T = container::SmallBytes>
 struct Marker : Meta<T> {
+public:
     static constexpr auto meta_type = MetaType::Marker;
 
     Marker() = default;
@@ -1536,6 +1546,7 @@ struct Marker : Meta<T> {
 
 template<typename T = container::SmallBytes>
 struct CuePoint : Meta<T> {
+public:
     static constexpr auto meta_type = MetaType::CuePoint;
 
     CuePoint() = default;
@@ -1546,6 +1557,7 @@ struct CuePoint : Meta<T> {
 
 template<typename T = container::SmallBytes>
 struct MIDIChannelPrefix : Meta<T> {
+public:
     static constexpr auto meta_type = MetaType::MIDIChannelPrefix;
 
     MIDIChannelPrefix() = default;
