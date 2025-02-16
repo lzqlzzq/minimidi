@@ -21,8 +21,7 @@ int main(int argc, char *argv[]) {
         track1.messages.emplace_back(SetTempo(0, 400000));  // (time, ms_per_quarter)
         track1.messages.emplace_back(TimeSignature(0, 4, 2));  // (time, denominator, numerator)
 
-        std::cout << "track1:\n" << to_string(track1.to_bytes()) << std::endl;
-        
+
         Track track2;
         track2.messages.emplace_back(TrackName(0, std::string("Test track")));
         track2.messages.emplace_back(NoteOn(0, 0, 60, 100));  // (time, channel, pitch, velocity)
@@ -40,7 +39,6 @@ int main(int argc, char *argv[]) {
         track2.messages.emplace_back(NoteOn(2880, 0, 64, 100));
         track2.messages.emplace_back(NoteOn(3840, 0, 64, 0));
 
-        std::cout << "track2:\n" << to_string(track2.to_bytes()) << std::endl;
 
         MidiFile<> midifile(MidiFormat::MultiTrack,
                                 0,

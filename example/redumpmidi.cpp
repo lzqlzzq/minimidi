@@ -26,7 +26,7 @@ void write_file(const string& from, const string& to)
     MidiFile midiFile2 = MidiFile(midiFile.tracks,
         MidiFormat::MultiTrack,
         0,
-        midiFile.ticksPerQuarter);
+        midiFile.ticks_per_quarter());
     midiFile2.write_file(to);
 };
 
