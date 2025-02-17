@@ -1308,9 +1308,9 @@ public:
         utils::write_variable_length(cursor, data.size());
 
         // Write data
-        std::uninitialized_copy(data.begin(), data.end(), cursor);
+        std::copy(data.begin(), data.end(), cursor);  // Changed from uninitialized_copy
         // Write SysExEnd
-        this->m_data[this->m_data.size() - 1] = status;
+        this->m_data[this->m_data.size() - 1] = lut::to_msg_status(MessageType::SysExEnd);
     }
 };
 
@@ -1401,7 +1401,7 @@ public:  // 添加 public 关键字
         auto* cursor = &this->m_data[1];
         utils::write_variable_length(cursor, metaValue.size());
         // Write meta value
-        std::uninitialized_copy(metaValue.begin(), metaValue.end(), cursor);
+        std::copy(metaValue.begin(), metaValue.end(), cursor);
     };
 
 
