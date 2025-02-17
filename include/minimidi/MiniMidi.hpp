@@ -1003,11 +1003,11 @@ constexpr uint8_t to_meta_status(const MetaType metaType) {
     return static_cast<uint8_t>(metaType);
 }
 
-constexpr static uint8_t to_status_byte(const uint8_t status, const uint8_t channel) {
+constexpr uint8_t to_status_byte(const uint8_t status, const uint8_t channel) {
     return status | channel;
 };
 
-constexpr static uint8_t to_status_byte(const MessageType type, const uint8_t channel) {
+constexpr uint8_t to_status_byte(const MessageType type, const uint8_t channel) {
     return to_msg_status(type) | channel;
 }
 
@@ -1604,7 +1604,8 @@ public:
 
 using namespace messages;
 
-constexpr static std::string MTHD("MThd");
+constexpr std::string_view MTHD{"MThd", 4};
+constexpr std::string_view MTRK{"MTrk", 4};
 
 #define MIDI_FORMAT                    \
     MIDI_FORMAT_MEMBER(SingleTrack, 0) \
@@ -1645,10 +1646,6 @@ inline MidiFormat read_midiformat(const uint16_t data) {
 };
 
 #undef MIDI_FORMAT
-
-// MIDI Parser Implementation
-
-const std::string MTRK("MTrk");
 
 // MIDI Parser Implementation
 
@@ -1806,7 +1803,7 @@ public:
         cursor(cursor), bufferEnd(bufferEnd), trackNum(trackNum) {};
 
     size_t parse_chunk_len() {
-        while (std::string(reinterpret_cast<const char*>(cursor), 4) != MTRK) {
+        while (std::string_view(reinterpret_cast<const char*>(cursor), 4) != MTRK) {
             const size_t tmpLen = utils::read_msb_bytes(cursor + 4, 4);
             if (cursor + tmpLen + 8 > bufferEnd) [[unlikely]] {
                 throw std::ios_base::failure(
@@ -1902,7 +1899,7 @@ inline MidiHeader::MidiHeader(const uint8_t* data, const size_t size) {
     const uint8_t* cursor = data;
 
     // Check file begin with "MThd"
-    if (std::string(reinterpret_cast<const char*>(cursor), 4) != MTHD) {
+    if (std::string_view(reinterpret_cast<const char*>(cursor), 4) != MTHD) {
         throw std::ios_base::failure("MiniMidi: Invaild midi file! File header is not MThd!");
     }
     if (const auto chunkLen = utils::read_msb_bytes(cursor + 4, 4); chunkLen != 6) {
@@ -2237,13 +2234,13 @@ std::string to_string(const Track<T>& track) {
 template<typename T>
 std::string to_string(const MidiFile<T>& file) {
     std::stringstream out;
-    out << "File format: " << file.get_format_string() << std::endl;
+    out << "File format: " << to_string(file.format()) << std::endl;
     out << "Division:\n"
-        << "    Type: " << file.get_division_type() << std::endl;
-    if (file.get_division_type()) {
-        out << "    Tick per Second: " << file.get_tick_per_second() << std::endl;
+        << "    Type: " << file.division_type() << std::endl;
+    if (file.division_type()) {
+        out << "    Tick per Second: " << file.ticks_per_second() << std::endl;
     } else {
-        out << "    Tick per Quarter: " << file.get_tick_per_quarter() << std::endl;
+        out << "    Tick per Quarter: " << file.ticks_per_quarter() << std::endl;
     }
     out << std::endl;
 
