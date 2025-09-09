@@ -858,7 +858,7 @@ public:
             msgHeaders.end(),
             std::less<SortHelper>());
 
-        container::Bytes trackBytes(dataLen + 5 * msgHeaders.size() + 8);
+        container::Bytes trackBytes(dataLen + 5 * msgHeaders.size() + 12);
 
         uint8_t* cursor = trackBytes.data();
         uint32_t prevTime = 0;
@@ -890,7 +890,7 @@ public:
             prevStatus = curStatus;
         }
         // Write EOT
-        utils::write_variable_length(cursor, 1);
+        utils::write_variable_length(cursor, 0);
         *cursor = _eot.get_status_byte();
         ++cursor;
         std::copy(_eot.get_data().begin(), _eot.get_data().end(), cursor);
