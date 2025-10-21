@@ -16,7 +16,7 @@ int main(int argc, char *argv[]) {
         std::string filename = std::string(argv[1]);
         std::cout << "Filename: " << filename << std::endl;
         try {
-            minimidi::file::MidiFile midifile = minimidi::file::MidiFile::from_file(filename);
+            minimidi::file::MidiFile midifile = minimidi::file::MidiFile::from_file(filename, true);
             std::cout << midifile;
         } catch(const char* e) {
             std::cout << e << std::endl;

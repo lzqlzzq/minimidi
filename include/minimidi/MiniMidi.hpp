@@ -310,35 +310,54 @@ class Message {
 
 public:
     Message() = default;
-    Message(const uint32_t time, const container::SmallBytes &data) {
+    Message(const uint32_t time, const container::SmallBytes &data, bool santize_data = false) {
         this->time = time;
         this->statusByte = data[0];
         this->data.assign(data.begin() + 1, data.end());
+
+        if(santize_data) santize_data_values();
     };
 
-    Message(const uint32_t time, container::SmallBytes &&data) {
+    Message(const uint32_t time, container::SmallBytes &&data, bool santize_data = false) {
         this->time = time;
         this->statusByte = data[0];
         this->data.assign(data.begin() + 1, data.end());
+
+        if(santize_data) santize_data_values();
     };
 
-    Message(const uint32_t time, const uint8_t statusByte, const container::SmallBytes &data) {
+    Message(const uint32_t time, const uint8_t statusByte, const container::SmallBytes &data, bool santize_data = false) {
         this->time = time;
         this->statusByte = statusByte;
         this->data = data;
+
+        if(santize_data) santize_data_values();
     };
 
-    Message(const uint32_t time, const uint8_t statusByte, container::SmallBytes &&data) {
+    Message(const uint32_t time, const uint8_t statusByte, container::SmallBytes &&data, bool santize_data = false) {
         this->time = time;
         this->statusByte = statusByte;
         this->data = std::move(data);
+
+        if(santize_data) santize_data_values();
     };
 
-    Message(const uint32_t time, const uint8_t statusByte, const uint8_t *begin, const size_t size):
-        time(time), statusByte(statusByte), data(begin, size) {};
+    Message(const uint32_t time, const uint8_t statusByte, const uint8_t *begin, const size_t size, bool santize_data = false):
+        time(time), statusByte(statusByte), data(begin, size) {
+            if(santize_data) santize_data_values();
+        };
 
-    Message(const uint32_t time, const uint8_t *begin, const size_t size):
-        time(time), statusByte(*begin), data(begin + 1, size - 1) {};
+    Message(const uint32_t time, const uint8_t *begin, const size_t size, bool santize_data = false):
+        time(time), statusByte(*begin), data(begin + 1, size - 1) {
+            if(santize_data) santize_data_values();
+        };
+
+    void santize_data_values() {
+        // Clip the data value under 127
+        for(auto &d : this->data) {
+            if(d > 127) d = 127;
+        }
+    };
 
     [[nodiscard]] uint32_t get_time() const { return time; };
 
@@ -718,7 +737,7 @@ public:
     Track() = default;
 
     // explicit Track(const container::ByteSpan data) {
-    Track(const uint8_t *cursor, const size_t size) {
+    Track(const uint8_t *cursor, const size_t size, bool santize_data = false) {
         messages.reserve(size / 3 + 100);
         const uint8_t *bufferEnd = cursor + size;
 
@@ -745,7 +764,7 @@ public:
                         + std::to_string(prevEventLen) + "!"
                     );
                 }
-                messages.emplace_back(tickOffset, prevStatusCode, cursor, prevEventLen - 1);
+                messages.emplace_back(tickOffset, prevStatusCode, cursor, prevEventLen - 1, santize_data);
                 cursor += prevEventLen - 1;
             }
             // Meta message
@@ -766,7 +785,7 @@ public:
                         + std::to_string(eventLen) + "!"
                     );
                 }
-                messages.emplace_back(tickOffset, prevBuffer, eventLen);
+                messages.emplace_back(tickOffset, prevBuffer, eventLen, santize_data);
 
                 if (messages.back().get_meta_type() == message::MetaType::EndOfTrack)
                     break;
@@ -790,7 +809,7 @@ public:
                         + std::to_string(prevEventLen) + "!"
                     );
                 }
-                messages.emplace_back(tickOffset, prevBuffer, prevEventLen);
+                messages.emplace_back(tickOffset, prevBuffer, prevEventLen, santize_data);
                 cursor = prevBuffer + prevEventLen;
             }
             // Channel message or system common message
@@ -806,7 +825,7 @@ public:
                         + std::to_string(prevEventLen) + "!"
                     );
                 }
-                messages.emplace_back(tickOffset, cursor, prevEventLen);
+                messages.emplace_back(tickOffset, cursor, prevEventLen, santize_data);
                 cursor += prevEventLen;
             }
 
@@ -974,7 +993,7 @@ public:
 
     // MidiFile() = default;
 
-    explicit MidiFile(const uint8_t* const data, const size_t size) {
+    explicit MidiFile(const uint8_t* const data, const size_t size, bool santize_data = false) {
         if (size < 4) {
             throw std::ios_base::failure("MiniMidi: Invaild midi file! File size is less than 4!");
         }
@@ -1024,12 +1043,12 @@ public:
                 );
             }
 
-            this->tracks.emplace_back(cursor + 8, chunkLen);
+            this->tracks.emplace_back(cursor + 8, chunkLen, santize_data);
             cursor += (8 + chunkLen);
         }
     };
 
-    explicit MidiFile(const container::Bytes &data) : MidiFile(data.data(), data.size()) {};
+    explicit MidiFile(const container::Bytes &data, bool santize_data = false) : MidiFile(data.data(), data.size(), santize_data) {};
 
     explicit MidiFile(MidiFormat format=MidiFormat::MultiTrack,
                     uint8_t divisionType=0,
@@ -1059,7 +1078,7 @@ public:
         this->ticksPerQuarter = ticksPerQuarter;
     };
 
-    static MidiFile from_file(const std::string &filepath) {
+    static MidiFile from_file(const std::string &filepath, bool santize_data = false) {
         FILE *filePtr = fopen(filepath.c_str(), "rb");
 
         if (!filePtr) {
@@ -1073,7 +1092,7 @@ public:
         fread(data.data(), 1, fileLen, filePtr);
         fclose(filePtr);
 
-        return MidiFile(data.data(), fileLen);
+        return MidiFile(data.data(), fileLen, santize_data);
     };
 
     container::Bytes to_bytes() {
