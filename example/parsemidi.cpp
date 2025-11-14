@@ -6,19 +6,22 @@
 ```
 */
 
-#include<iostream>
-#include<string>
-#include"minimidi/MiniMidi.hpp"
+#include <iostream>
+#include <string>
+#include <span>
+#include <chrono>
+
+#include "minimidi/MiniMidi.hpp"
 
 
-int main(int argc, char *argv[]) {
-    if(argc == 2) {
+int main(int argc, char* argv[]) {
+    if (argc == 2) {
         std::string filename = std::string(argv[1]);
         std::cout << "Filename: " << filename << std::endl;
         try {
-            minimidi::file::MidiFile midifile = minimidi::file::MidiFile::from_file(filename, true);
-            std::cout << midifile;
-        } catch(const char* e) {
+            const auto midifile = minimidi::MidiFile<>::from_file(filename, true);
+            std::cout << minimidi::to_string(midifile) << std::endl;
+        } catch (const char* e) {
             std::cout << e << std::endl;
             exit(EXIT_FAILURE);
         };
