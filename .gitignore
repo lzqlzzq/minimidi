@@ -31,6 +31,10 @@
 *.out
 *.app
 
+## Documentation artifacts
+docs/_build/
+docs/api/generated/
+
 **/.idea
 **/.vscode
 **/*build*

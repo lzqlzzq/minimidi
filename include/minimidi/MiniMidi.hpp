@@ -231,6 +231,7 @@ public:
      * @param time Delta time in ticks
      * @param statusByte Status byte including channel
      * @param data Message data bytes
+     * @param sanitize_data Clamp payload bytes to the 7-bit MIDI range when enabled
      */
     Message(
         const uint32_t time, const uint8_t statusByte, const T& data, bool sanitize_data = false
@@ -243,6 +244,7 @@ public:
      * @param time Delta time in ticks
      * @param statusByte Status byte including channel
      * @param data Message data bytes (moved from)
+     * @param sanitize_data Clamp payload bytes to the 7-bit MIDI range when enabled
      */
     Message(const uint32_t time, const uint8_t statusByte, T&& data, bool sanitize_data = false)
         requires concepts::MovableContainer<T>
@@ -256,6 +258,7 @@ public:
      * @param statusByte Status byte including channel
      * @param begin Start of data range
      * @param end End of data range
+     * @param sanitize_data Clamp payload bytes to the 7-bit MIDI range when enabled
      */
     template<concepts::ByteIterator Iter>
     Message(
@@ -274,6 +277,7 @@ public:
      * @param statusByte Status byte including channel
      * @param begin Start of data
      * @param size Number of bytes
+     * @param sanitize_data Clamp payload bytes to the 7-bit MIDI range when enabled
      */
     template<concepts::ByteIterator Iter>
     Message(
@@ -288,8 +292,14 @@ public:
         if (sanitize_data) sanitize_data_value_impl();
     };
 
-    // constructor from begin and size for container that does not support BeginSizeConstructor
-    // like std::vector
+    /**
+     * @brief Construct from iterator and size for containers without size constructors
+     * @param time Delta time in ticks
+     * @param statusByte Status byte including channel
+     * @param begin Start of data
+     * @param size Number of bytes
+     * @param sanitize_data Clamp payload bytes to the 7-bit MIDI range when enabled
+     */
     template<concepts::ByteIterator Iter>
     Message(
         const uint32_t time,
@@ -422,6 +432,7 @@ struct TrackView {
      * @brief Construct a view over track data
      * @param cursor Pointer to start of track chunk data
      * @param size Size of track chunk in bytes
+     * @param sanitize Clamp each parsed message payload to the 7-bit MIDI range
      */
     TrackView(const uint8_t* cursor, const size_t size, bool sanitize = false) :
         cursor(cursor), size(static_cast<size_t>(size)), sanitize_data(sanitize) {};
@@ -502,12 +513,14 @@ public:
      * @brief Construct from raw track data
      * @param cursor Pointer to track chunk data
      * @param size Size of track chunk in bytes
+     * @param sanitize_data Clamp each parsed message payload to the 7-bit MIDI range
      */
     Track(const uint8_t* cursor, size_t size, bool sanitize_data = false);
 
     /**
      * @brief Construct from track view
      * @param view TrackView to parse
+     * @param sanitize_data Clamp each parsed message payload to the 7-bit MIDI range
      */
     explicit Track(const TrackView<T>& view, bool sanitize_data = false) :
         Track(view.cursor, view.size, sanitize_data) {};
@@ -662,6 +675,7 @@ struct MidiFileView : public MidiHeader {
      * @brief Construct a view over MIDI file data
      * @param data Pointer to MIDI file data
      * @param size Size of file in bytes
+     * @param sanitize_data Clamp each parsed message payload to the 7-bit MIDI range
      * @throws std::ios_base::failure if header is invalid
      */
     MidiFileView(const uint8_t* data, size_t size, bool sanitize_data = false);
@@ -669,6 +683,7 @@ struct MidiFileView : public MidiHeader {
     /**
      * @brief Construct from byte vector
      * @param data Vector containing MIDI file data
+     * @param sanitize_data Clamp each parsed message payload to the 7-bit MIDI range
      */
     explicit MidiFileView(const container::Bytes& data, bool sanitize_data = false) :
         MidiFileView(data.data(), data.size(), sanitize_data) {};
@@ -741,6 +756,7 @@ struct MidiFile : public MidiHeader {
     /**
      * @brief Construct from file view
      * @param view MidiFileView to parse
+     * @param sanitize_data Clamp each parsed message payload to the 7-bit MIDI range
      */
     explicit MidiFile(const MidiFileView<T>& view, bool sanitize_data = false);
 
@@ -748,12 +764,14 @@ struct MidiFile : public MidiHeader {
      * @brief Construct from raw file data
      * @param data Pointer to MIDI file data
      * @param size Size of file in bytes
+     * @param sanitize_data Clamp each parsed message payload to the 7-bit MIDI range
      */
     MidiFile(const uint8_t* const data, const size_t size, bool sanitize_data = false);
 
     /**
      * @brief Construct from byte vector
      * @param data Vector containing MIDI file data
+     * @param sanitize_data Clamp each parsed message payload to the 7-bit MIDI range
      */
     explicit MidiFile(const container::Bytes& data, bool sanitize_data = false) :
         MidiFile(data.data(), data.size(), sanitize_data) {};
@@ -798,6 +816,7 @@ struct MidiFile : public MidiHeader {
     /**
      * @brief Load a MIDI file from disk
      * @param filepath Path to the MIDI file
+     * @param sanitize_data Clamp each parsed message payload to the 7-bit MIDI range
      * @return MidiFile object containing the parsed file
      * @throws std::ios_base::failure if file cannot be opened or parsed
      */

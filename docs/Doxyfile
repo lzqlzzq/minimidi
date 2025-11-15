@@ -1,0 +1,27 @@
+PROJECT_NAME           = "MiniMidi"
+OUTPUT_DIRECTORY       = _build/doxygen
+OUTPUT_LANGUAGE        = English
+GENERATE_HTML          = NO
+GENERATE_LATEX         = NO
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+
+INPUT                  = ../include
+FILE_PATTERNS          = *.hpp \
+                         *.h
+RECURSIVE              = YES
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+INLINE_INHERITED_MEMB  = YES
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = YES
+MULTILINE_CPP_IS_BRIEF = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARNINGS               = YES
+QUIET                  = YES
+
+FULL_PATH_NAMES        = NO
+STRIP_FROM_PATH        = ../
+SOURCE_BROWSER         = NO
+INLINE_SOURCE          = NO
