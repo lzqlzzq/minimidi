@@ -77,6 +77,7 @@
 #include <optional>
 #include <memory>
 #include <type_traits>
+#include <stdexcept>
 #include "svector.h"
 
 namespace minimidi {
@@ -176,6 +177,8 @@ concept SizeConstructible = requires(T a) {
 // Declarations for Message, Track, TrackView, MidiFileView and MidiFile
 enum class MessageType : uint8_t;
 enum class MetaType : uint8_t;
+template<typename T>
+struct TrackView;
 
 /**
  * @brief Base message class for all MIDI messages
@@ -195,6 +198,9 @@ protected:
             }
         }
     }
+
+    template<typename>
+    friend struct TrackView;
 
 public:
     uint32_t time{};
@@ -378,14 +384,15 @@ template<typename T = container::SmallBytes>
 struct TrackView {
     const uint8_t* cursor = nullptr;
     size_t         size   = 0;
+    bool           santize_data = false;
 
     /**
      * @brief Construct a view over track data
      * @param cursor Pointer to start of track chunk data
      * @param size Size of track chunk in bytes
      */
-    TrackView(const uint8_t* cursor, const size_t size) :
-        cursor(cursor), size(static_cast<size_t>(size)) {};
+    TrackView(const uint8_t* cursor, const size_t size, bool santize = false) :
+        cursor(cursor), size(static_cast<size_t>(size)), santize_data(santize) {};
 
     TrackView(const TrackView& other)     = default;
     TrackView(TrackView&& other) noexcept = default;
@@ -406,6 +413,7 @@ struct TrackView {
         if (this != &other) {
             cursor = other.cursor;
             size = other.size;
+            santize_data = other.santize_data;
         }
         return *this;
     }
@@ -421,8 +429,10 @@ struct TrackView {
         if (this != &other) {
             cursor = other.cursor;
             size = other.size;
+            santize_data = other.santize_data;
             other.cursor = nullptr;
             other.size = 0;
+            other.santize_data = false;
         }
         return *this;
     }
@@ -610,6 +620,9 @@ struct MidiFileView : public MidiHeader {
     const uint8_t* cursor    = nullptr;
     const uint8_t* bufferEnd = nullptr;
     size_t         trackNum  = 0;
+    bool           santize_data = false;
+    static constexpr bool kContainerWritable
+        = !std::is_const_v<std::remove_reference_t<decltype(*std::declval<T&>().begin())>>;
 
     /**
      * @brief Default constructor
@@ -622,19 +635,21 @@ struct MidiFileView : public MidiHeader {
      * @param size Size of file in bytes
      * @throws std::ios_base::failure if header is invalid
      */
-    MidiFileView(const uint8_t* data, size_t size);
+    MidiFileView(const uint8_t* data, size_t size, bool santize_data = false);
 
     /**
      * @brief Construct from byte vector
      * @param data Vector containing MIDI file data
      */
-    explicit MidiFileView(const container::Bytes& data) : MidiFileView(data.data(), data.size()) {};
+    explicit MidiFileView(const container::Bytes& data, bool santize_data = false) :
+        MidiFileView(data.data(), data.size(), santize_data) {};
 
     class iterator;
-    iterator begin() const { return iterator(cursor, bufferEnd, trackNum); };
+    iterator begin() const { return iterator(cursor, bufferEnd, trackNum, santize_data); };
     iterator end() const { return iterator(); };
 
     size_t track_num() const { return trackNum; };
+    bool   santize_enabled() const { return santize_data; };
 
     /**
      * @brief Copy assignment operator
@@ -649,6 +664,7 @@ struct MidiFileView : public MidiHeader {
             cursor = other.cursor;
             bufferEnd = other.bufferEnd;
             trackNum = other.trackNum;
+            santize_data = other.santize_data;
         }
         return *this;
     }
@@ -666,9 +682,11 @@ struct MidiFileView : public MidiHeader {
             cursor = other.cursor;
             bufferEnd = other.bufferEnd;
             trackNum = other.trackNum;
+            santize_data = other.santize_data;
             other.cursor = nullptr;
             other.bufferEnd = nullptr;
             other.trackNum = 0;
+            other.santize_data = false;
         }
         return *this;
     }
@@ -1851,9 +1869,9 @@ public:
     [[nodiscard]] bool done() const { return cursor >= bufferEnd || trackIdx >= trackNum; }
 
     template<typename T>
-    TrackView<T> next() {
+    TrackView<T> next(bool santize_data = false) {
         const auto chunkLen = parse_chunk_len();
-        const auto view     = TrackView<T>(cursor + 8, chunkLen);
+        const auto view     = TrackView<T>(cursor + 8, chunkLen, santize_data);
         cursor += (8 + chunkLen);
         ++trackIdx;
         return view;
@@ -1865,12 +1883,15 @@ template<typename T>
 class TrackView<T>::iterator : details::MessageGenerator {
     Message<T> msg;
     bool       finish = false;
+    bool       santize_data_flag = false;
 
 public:
     iterator() = default;
 
-    iterator(const uint8_t* cursor, const size_t size) : iterator(cursor, cursor + size) {};
-    iterator(const uint8_t* begin, const uint8_t* end) : MessageGenerator(begin, end) {
+    iterator(const uint8_t* cursor, const size_t size, bool santize) :
+        iterator(cursor, cursor + size, santize) {};
+    iterator(const uint8_t* begin, const uint8_t* end, bool santize) :
+        MessageGenerator(begin, end), santize_data_flag(santize) {
         advance();
     };
 
@@ -1893,6 +1914,7 @@ public:
             this->emplace_using([&](auto... args) {
                 std::destroy_at(&msg);
                 std::construct_at(&msg, args...);
+                if (santize_data_flag) { msg.santize_data_values(); }
             });
         } else {
             this->foundEOT = true;
@@ -1902,7 +1924,7 @@ public:
 
 template<typename T>
 typename TrackView<T>::iterator TrackView<T>::begin() const {
-    return {cursor, size};
+    return {cursor, size, santize_data};
 }
 
 template<typename T>
@@ -1966,12 +1988,13 @@ inline uint16_t MidiHeader::ticks_per_second() const {
 template<typename T>
 class MidiFileView<T>::iterator : details::TrackGenerator {
     std::optional<TrackView<T>> track{};
+    bool                        santize_data_flag = false;
 
 public:
     iterator() = default;
 
-    iterator(const uint8_t* cursor, const uint8_t* bufferEnd, const size_t trackNum) :
-        TrackGenerator(cursor, bufferEnd, trackNum) {
+    iterator(const uint8_t* cursor, const uint8_t* bufferEnd, const size_t trackNum, bool santize_data) :
+        TrackGenerator(cursor, bufferEnd, trackNum), santize_data_flag(santize_data) {
         advance();
     };
 
@@ -1990,21 +2013,26 @@ public:
         if (this->done()) {
             track.reset();
         } else {
-            track.emplace(this->next<T>());
+            track.emplace(this->next<T>(santize_data_flag));
         }
     }
 };
 
 template<typename T>
-MidiFileView<T>::MidiFileView(const uint8_t* data, const size_t size) : MidiHeader(data, size) {
+MidiFileView<T>::MidiFileView(const uint8_t* data, const size_t size, bool santize) :
+    MidiHeader(data, size) {
+    if (santize && !kContainerWritable) {
+        throw std::invalid_argument("MiniMidi: santize_data requires writable container type");
+    }
     this->cursor    = data + HEADER_LENGTH;
     this->bufferEnd = data + size;
     this->trackNum  = utils::read_msb_bytes(data + 10, 2);
+    this->santize_data = santize;
 }
 
 template<typename T>
 MidiFile<T>::MidiFile(const uint8_t* data, const size_t size, bool santize_data) :
-    MidiFile(MidiFileView<T>(data, size), santize_data) {}
+    MidiFile(MidiFileView<T>(data, size, santize_data), santize_data) {}
 
 template<typename T>
 MidiFile<T>::MidiFile(const MidiFileView<T>& view, bool santize_data) : MidiHeader(view) {

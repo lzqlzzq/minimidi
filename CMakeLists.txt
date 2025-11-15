@@ -25,6 +25,10 @@ if(BUILD_EXAMPLES)
     add_executable(writemidi example/writemidi.cpp)
     target_link_libraries(writemidi PRIVATE minimidi)
 
+    add_executable(sanitize_example example/sanitize_example.cpp)
+    target_link_libraries(sanitize_example PRIVATE minimidi)
+    target_compile_features(sanitize_example PRIVATE cxx_std_20)
+
     include(FetchContent)
 
     FetchContent_Declare(
