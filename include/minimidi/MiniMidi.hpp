@@ -202,6 +202,9 @@ protected:
         using ReferenceType        = decltype(*std::begin(m_data));
         constexpr bool kIsWritable = !std::is_const_v<std::remove_reference_t<ReferenceType>>;
         if constexpr (kIsWritable) {
+            if (statusByte == 0xFF) {
+                return;   // meta payloads keep original bytes per MIDI spec
+            }
             for (auto& value : m_data) {
                 if (value > 0x7F) value = 0x7F;
             }
