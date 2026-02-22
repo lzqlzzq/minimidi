@@ -1897,7 +1897,7 @@ public:
         cursor(cursor), bufferEnd(bufferEnd), trackNum(trackNum) {};
 
     size_t parse_chunk_len() {
-        auto remaining = [&]() -> size_t {
+        auto remaining = [bufferEnd = this->bufferEnd, cursor = this->cursor]() -> size_t {
             return static_cast<size_t>(bufferEnd - cursor);
         };
 
