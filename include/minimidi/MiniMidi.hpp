@@ -1819,6 +1819,8 @@ protected:
 
         // Skip status byte
         cursor += 1;
+        // Keep this sequenced: read_variable_length(cursor) advances cursor,
+        // so combining it with (cursor - prevBuffer) caused unsequenced UB.
         const auto sysexPayloadLen = utils::read_variable_length(cursor);
         prevEventLen = sysexPayloadLen + static_cast<size_t>(cursor - prevBuffer);
 
@@ -1841,6 +1843,8 @@ protected:
 
         // Skip status byte and meta type byte
         cursor += 2;
+        // Keep this sequenced: read_variable_length(cursor) advances cursor,
+        // so combining it with (cursor - prevBuffer) caused unsequenced UB.
         const auto metaPayloadLen = utils::read_variable_length(cursor);
         const auto eventLen = metaPayloadLen + static_cast<size_t>(cursor - prevBuffer);
 
