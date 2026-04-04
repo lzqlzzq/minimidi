@@ -1871,8 +1871,17 @@ protected:
 
     template<typename Func>
     void common_msg(const uint8_t curStatusCode, Func f) {
+        const auto msgType = lut::to_msg_type(curStatusCode);
+        if (msgType == MessageType::Unknown) [[unlikely]] {
+            std::stringstream ss;
+            ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(curStatusCode);
+            throw std::ios_base::failure(
+                "MiniMidi: Unknown or unsupported status byte: 0x" + ss.str()
+            );
+        }
+
         prevStatusCode = curStatusCode;
-        prevEventLen   = lut::get_msg_length(lut::to_msg_type(curStatusCode));
+        prevEventLen   = lut::get_msg_length(msgType);
 
         if (cursor + prevEventLen > bufferEnd) [[unlikely]] {
             throw std::ios_base::failure(
@@ -1884,9 +1893,7 @@ protected:
         }
         const auto curCursor = cursor;
         cursor += prevEventLen;
-        // f(tickOffset, curStatusCode, curCursor + 1, prevEventLen - 1);
-        // prevEventLen - 1 <= 2, and there must be a EndOfTrack after the last event
-        f(tickOffset, curStatusCode, curCursor + 1, 2);
+        f(tickOffset, curStatusCode, curCursor + 1, prevEventLen - 1);
     }
 };
 
