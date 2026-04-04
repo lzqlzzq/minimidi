@@ -1903,19 +1903,27 @@ public:
         cursor(cursor), bufferEnd(bufferEnd), trackNum(trackNum) {};
 
     size_t parse_chunk_len() {
-        while (std::string_view(reinterpret_cast<const char*>(cursor), 4) != MTRK) {
-            const size_t tmpLen = utils::read_msb_bytes(cursor + 4, 4);
-            if (cursor + tmpLen + 8 > bufferEnd) [[unlikely]] {
+        auto remaining = [&bufferEnd = this->bufferEnd, &cursor = this->cursor]() -> size_t {
+            return static_cast<size_t>(bufferEnd - cursor);
+        };
+
+        while (true) {
+            if (remaining() < 8) [[unlikely]] {
+                throw std::ios_base::failure("MiniMidi: Unexpected EOF while reading chunk header!");
+            }
+            const auto tag = std::string_view(reinterpret_cast<const char*>(cursor), 4);
+            const size_t len = utils::read_msb_bytes(cursor + 4, 4);
+            if (len > remaining() - 8) [[unlikely]] {
                 throw std::ios_base::failure(
-                    "MiniMidi: Unexpected EOF in file! Cursor is "
-                    + std::to_string(cursor + tmpLen + 8 - bufferEnd)
-                    + " bytes beyond the end of buffer with chunk length " + std::to_string(tmpLen)
-                    + "!"
+                    "MiniMidi: Invalid chunk length " + std::to_string(len)
+                    + " (remaining bytes after header: " + std::to_string(remaining() - 8) + ")"
                 );
             }
-            cursor += (8 + tmpLen);
+            if (tag == MTRK) {
+                return len;
+            }
+            cursor += 8 + len;
         }
-        return utils::read_msb_bytes(cursor + 4, 4);
     }
 
     [[nodiscard]] bool done() const { return cursor >= bufferEnd || trackIdx >= trackNum; }
