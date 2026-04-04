@@ -1819,7 +1819,8 @@ protected:
 
         // Skip status byte
         cursor += 1;
-        prevEventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
+        const auto sysexPayloadLen = utils::read_variable_length(cursor);
+        prevEventLen = sysexPayloadLen + static_cast<size_t>(cursor - prevBuffer);
 
         if (prevBuffer + prevEventLen > bufferEnd) [[unlikely]] {
             throw std::ios_base::failure(
@@ -1840,7 +1841,8 @@ protected:
 
         // Skip status byte and meta type byte
         cursor += 2;
-        const auto eventLen = utils::read_variable_length(cursor) + (cursor - prevBuffer);
+        const auto metaPayloadLen = utils::read_variable_length(cursor);
+        const auto eventLen = metaPayloadLen + static_cast<size_t>(cursor - prevBuffer);
 
         if (prevBuffer + eventLen > bufferEnd) [[unlikely]] {
             throw std::ios_base::failure(
